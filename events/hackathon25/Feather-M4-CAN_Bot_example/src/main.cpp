@@ -204,41 +204,64 @@ void rcv_Game()
 }
 // direction
 
-DIR chooseSpiralDirection() {
+DIR chooseSpiralDirection()
+{
     uint8_t px, py;
     switch (player_index)
     {
-    case 1: px = positions.x1; py = positions.y1; break;
-    case 2: px = positions.x2; py = positions.y2; break;
-    case 3: px = positions.x3; py = positions.y3; break;
-    case 4: px = positions.x4; py = positions.y4; break;
-    default: return currentDir;
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
     }
 
     int fx = (px + dx[currentDir] + 64) % 64;
     int fy = (py + dy[currentDir] + 64) % 64;
 
-    if (grid[fx][fy] == 0) {
-        return currentDir; 
+    if (grid[fx][fy] == 0)
+    {
+        return currentDir;
     }
 
-    if (currentDir == Right || currentDir == Left) {
+    if (currentDir == Right || currentDir == Left)
+    {
         int dyDir = (py + 1 + 64) % 64;
-        if (grid[px][dyDir] == 0) {
-            return Down;
+        if (grid[px][dyDir] == 0)
+        {
+            return Up;
         }
     }
-    if (currentDir == Down) {
-        if (goingRight) {
+    if (currentDir == Down)
+    {
+        if (goingRight)
+        {
             int rx = (px + 1 + 64) % 64;
-            if (grid[rx][py] == 0) {
+            if (grid[rx][py] == 0)
+            {
                 currentDir = Right;
                 goingRight = true;
                 return Right;
             }
-        } else {
+        }
+        else
+        {
             int lx = (px - 1 + 64) % 64;
-            if (grid[lx][py] == 0) {
+            if (grid[lx][py] == 0)
+            {
                 currentDir = Left;
                 goingRight = false;
                 return Left;
@@ -248,7 +271,6 @@ DIR chooseSpiralDirection() {
 
     return currentDir;
 }
-
 
 DIR chooseSafeDirection()
 {
@@ -328,11 +350,9 @@ void rcv_state()
 
     // positions = msg_state;
     // move(Right);
-    // DIR safe = chooseSafeDirection();
-    // currentDir = safe;
-    // move(safe);
-    DIR safe = chooseSpiralDirection();
+    DIR safe = chooseSafeDirection();
     currentDir = safe;
+    // move(safe);
     move(safe);
     Serial.printf("Received Positions\n");
 }
@@ -388,6 +408,13 @@ void rcv_Finish()
     MSG_Finish msg_finish;
     CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
 
-    Serial.printf("Received Finish packet\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\n",
-                  msg_finish.id1, msg_finish.point1, msg_finish.id2, msg_finish.point2, msg_finish.id3, msg_finish.point3, msg_finish.id4, msg_finish.point4);
+    uint8_t scores[5] = {0, msg_finish.point1, msg_finish.point2, msg_finish.point3, msg_finish.point4};
+    Serial.println("Received Finish packet");
+    uint8_t win = 0;
+    for (int i = 1; i <= 4; i++)
+    {
+        if (scores[i] > scores[win])
+            win = i;
+    }
+    Serial.printf("WINNER %s %d points\n", player_info.id[win], scores[win]);
 }
