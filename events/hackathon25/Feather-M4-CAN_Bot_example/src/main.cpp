@@ -385,4 +385,4 @@ void rcv_Finish()
 
     Serial.printf("Received Finish packet\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\n",
                   msg_finish.id1, msg_finish.point1, msg_finish.id2, msg_finish.point2, msg_finish.id3, msg_finish.point3, msg_finish.id4, msg_finish.point4);
-               }
+}
