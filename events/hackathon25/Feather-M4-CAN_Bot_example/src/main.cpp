@@ -17,6 +17,12 @@ const int8_t dy[] = {0, 1, 0, -1, 0};
 DIR currentDir = Right;
 bool goingRight = true;
 
+DIR spiralDirs[4] = {Right, Down, Left, Up};
+uint8_t spiralStepLength = 1;
+uint8_t spiralStepsRemaining = 1;
+uint8_t spiralTurnCounter = 0;
+uint8_t spiralDirIndex = 0;
+
 // Function prototypes
 void send_Join();
 void rcv_Player();
