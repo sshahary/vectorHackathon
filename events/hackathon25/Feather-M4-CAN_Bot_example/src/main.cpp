@@ -14,7 +14,8 @@ int8_t grid[64][64] = {0};
 const int8_t dx[] = {0, 0, 1, 0, -1};
 const int8_t dy[] = {0, 1, 0, -1, 0};
 
-DIR currentDir = Up; // Start going up
+DIR currentDir = Right;
+bool goingRight = true;
 
 // Function prototypes
 void send_Join();
@@ -203,6 +204,52 @@ void rcv_Game()
 }
 // direction
 
+DIR chooseSpiralDirection() {
+    uint8_t px, py;
+    switch (player_index)
+    {
+    case 1: px = positions.x1; py = positions.y1; break;
+    case 2: px = positions.x2; py = positions.y2; break;
+    case 3: px = positions.x3; py = positions.y3; break;
+    case 4: px = positions.x4; py = positions.y4; break;
+    default: return currentDir;
+    }
+
+    int fx = (px + dx[currentDir] + 64) % 64;
+    int fy = (py + dy[currentDir] + 64) % 64;
+
+    if (grid[fx][fy] == 0) {
+        return currentDir; 
+    }
+
+    if (currentDir == Right || currentDir == Left) {
+        int dyDir = (py + 1 + 64) % 64;
+        if (grid[px][dyDir] == 0) {
+            return Down;
+        }
+    }
+    if (currentDir == Down) {
+        if (goingRight) {
+            int rx = (px + 1 + 64) % 64;
+            if (grid[rx][py] == 0) {
+                currentDir = Right;
+                goingRight = true;
+                return Right;
+            }
+        } else {
+            int lx = (px - 1 + 64) % 64;
+            if (grid[lx][py] == 0) {
+                currentDir = Left;
+                goingRight = false;
+                return Left;
+            }
+        }
+    }
+
+    return currentDir;
+}
+
+
 DIR chooseSafeDirection()
 {
     uint8_t px, py;
@@ -281,10 +328,12 @@ void rcv_state()
 
     // positions = msg_state;
     // move(Right);
-    DIR safe = chooseSafeDirection();
+    // DIR safe = chooseSafeDirection();
+    // currentDir = safe;
+    // move(safe);
+    DIR safe = chooseSpiralDirection();
     currentDir = safe;
     move(safe);
-
     Serial.printf("Received Positions\n");
 }
 
