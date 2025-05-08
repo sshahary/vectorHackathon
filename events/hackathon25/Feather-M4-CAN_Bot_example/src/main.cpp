@@ -11,8 +11,8 @@ struct Player_info player_info;
 MSG_State positions;
 int8_t grid[64][64] = {0};
 
-const int8_t dx[] = {0,  0,  1,  0, -1};
-const int8_t dy[] = {0,  1,  0, -1,  0};
+const int8_t dx[] = {0, 0, 1, 0, -1};
+const int8_t dy[] = {0, 1, 0, -1, 0};
 
 DIR currentDir = Up; // Start going up
 
@@ -125,10 +125,10 @@ void rcv_Player()
         Serial.printf("Player ID recieved\n");
         send_Name();
     }
-    else
-    {
-        player_ID = 0;
-    }
+    // else
+    // {
+    //     player_ID = 0;
+    // }
 
     Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n",
                   msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
@@ -198,6 +198,7 @@ void rcv_Game()
     else
     {
         Serial.println("I am NOT part of this game.");
+        Serial.printf("your ID: %d\n", player_ID);
     }
 }
 // direction
@@ -207,17 +208,29 @@ DIR chooseSafeDirection()
     uint8_t px, py;
     switch (player_index)
     {
-    case 1: px = positions.x1; py = positions.y1; break;
-    case 2: px = positions.x2; py = positions.y2; break;
-    case 3: px = positions.x3; py = positions.y3; break;
-    case 4: px = positions.x4; py = positions.y4; break;
-    default: return currentDir;
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
     }
     DIR tryDirs[3] = {
         currentDir,
         static_cast<DIR>(currentDir % 4 + 1),
-        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)
-    };
+        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)};
 
     for (DIR dir : tryDirs)
     {
@@ -258,13 +271,13 @@ void rcv_state()
         grid[positions.x4][positions.y4] = 4;
 
     // print the grid
-    Serial.println("Grid:");
-    for (int i = 0; i < 64; i++)
-    {
-        for (int j = 0; j < 64; j++)
-            Serial.printf("%d ", grid[i][j]);
-    }
-    Serial.println("End of grid");
+    // Serial.println("Grid:");
+    // for (int i = 0; i < 64; i++)
+    // {
+    //     for (int j = 0; j < 64; j++)
+    //         Serial.printf("%d ", grid[i][j]);
+    // }
+    // Serial.println("End of grid");
 
     // positions = msg_state;
     // move(Right);
@@ -326,6 +339,6 @@ void rcv_Finish()
     MSG_Finish msg_finish;
     CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
 
-    Serial.printf("Received Finish packet | Player ID: %u | Points: %u\n",
-                  msg_finish.id1, msg_finish.point1);
+    Serial.printf("Received Finish packet\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\n",
+                  msg_finish.id1, msg_finish.point1, msg_finish.id2, msg_finish.point2, msg_finish.id3, msg_finish.point3, msg_finish.id4, msg_finish.point4);
 }
