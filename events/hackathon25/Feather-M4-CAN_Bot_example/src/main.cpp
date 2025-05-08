@@ -323,7 +323,7 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
 }
 
 // Main decision logic
-DIR chooseDirectin() {
+DIR chooseDirection() {
     uint8_t px = 0, py = 0;
     switch (player_index) {
         case 1: px = positions.x1; py = positions.y1; break;
