@@ -13,6 +13,10 @@ void send_Join();
 void rcv_Player();
 void rcv_state();
 void rcv_Game();
+void move(DIR direction);
+void rcv_die();
+void rcv_Finish();
+void send_Name();
 
 // CAN receive callback
 void onReceive(int packetSize)
@@ -28,6 +32,18 @@ void onReceive(int packetSize)
         case Game:
             Serial.println("CAN: Received Game packet");
             rcv_Game();
+            break;
+        case State:
+            Serial.println("CAN: Received State packet");
+            rcv_state();
+            break;
+        case Die:
+            rcv_die();
+            Serial.println("CAN: Received Die packet");
+            break;
+        case Finish:
+            Serial.println("CAN: Received Finish packet");
+            rcv_Finish();
             break;
         default:
             Serial.println("CAN: Received unknown packet");
@@ -106,6 +122,7 @@ void rcv_Player()
 
     Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n",
                   msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
+    send_Name();
 }
 
 // set player name
@@ -176,5 +193,34 @@ void rcv_state()
     positions.y4 = msg_state.y4;
 
     // positions = msg_state;
+    move(Right);
     Serial.printf("Received Positions\n");
+}
+
+void move(DIR direction)
+{
+    MSG_Move msg_move;
+    msg_move.playerID = player_ID;
+    msg_move.direction = direction;
+
+    CAN.beginPacket(Move);
+    CAN.write((uint8_t *)&msg_move, sizeof(MSG_Move));
+    CAN.endPacket();
+
+    Serial.printf("Sent Move packet | Player ID: %u | Direction: %u\n", player_ID, direction);
+}
+void rcv_die(){
+    MSG_Die msg_die;
+    CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
+
+    Serial.printf("Received Die packet | Player ID: %u\n", msg_die.playerID);
+}
+
+void rcv_Finish()
+{
+    MSG_Finish msg_finish;
+    CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
+
+    Serial.printf("Received Finish packet | Player ID: %u | Points: %u\n",
+                  msg_finish.id1, msg_finish.point1);
 }
