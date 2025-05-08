@@ -7,7 +7,7 @@ const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
 uint8_t player_ID = 0;
 uint8_t game_ID = 0;
 uint8_t player_index = 0;
-uint8_t alive[4] = {1, 1, 1, 1};
+struct Player_info player_info;
 MSG_State positions;
 int8_t grid[64][64] = {0};
 
@@ -163,16 +163,19 @@ void send_GameAck()
     Serial.printf("Sent GameAck for Player ID: %u\n", player_ID);
 }
 
-void set_index(MSG_Game gameMsg)
+void set_players(MSG_Game gameMsg)
 {
-    if (gameMsg.player1_ID == player_ID)
-        player_index = 1;
-    if (gameMsg.player2_ID == player_ID)
-        player_index = 2;
-    if (gameMsg.player3_ID == player_ID)
-        player_index = 3;
-    if (gameMsg.player4_ID == player_ID)
-        player_index = 4;
+    for (int i = 1; i <= 4; i++)
+        player_info.alive[i] = 1;
+    player_info.id[1] = gameMsg.player1_ID;
+    player_info.id[2] = gameMsg.player2_ID;
+    player_info.id[3] = gameMsg.player3_ID;
+    player_info.id[4] = gameMsg.player4_ID;
+    for (int i = 1; i <= 4; i++)
+    {
+        if (player_info.id[i] == player_ID)
+            player_index = i;
+    }
 }
 
 // Receive game information
@@ -189,7 +192,7 @@ void rcv_Game()
     if (isSelected)
     {
         Serial.println("I am selected! Sending GameAck...");
-        set_index(gameMsg);
+        set_players(gameMsg);
         send_GameAck();
     }
     else
@@ -245,16 +248,20 @@ void rcv_state()
     positions.y4 = msg_state.y4;
 
     // Update grid with player positions
-    grid[positions.x1][positions.y1] = 1;
-    grid[positions.x2][positions.y2] = 2;
-    grid[positions.x3][positions.y3] = 3;
-    grid[positions.x4][positions.y4] = 4;
+    if (player_info.alive[1])
+        grid[positions.x1][positions.y1] = 1;
+    if (player_info.alive[2])
+        grid[positions.x2][positions.y2] = 2;
+    if (player_info.alive[3])
+        grid[positions.x3][positions.y3] = 3;
+    if (player_info.alive[4])
+        grid[positions.x4][positions.y4] = 4;
 
     // print the grid
     Serial.println("Grid:");
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < 64; i++)
     {
-        for (int j = 0; j < 8; j++)
+        for (int j = 0; j < 64; j++)
             Serial.printf("%d ", grid[i][j]);
     }
     Serial.println("End of grid");
@@ -296,14 +303,21 @@ void set_dead(uint8_t index)
                 grid[x][y] = 0;
         }
     }
-    alive[index] = 0;
+    player_info.alive[index] = 0;
 }
 
 void rcv_die()
 {
     MSG_Die msg_die;
     CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
-  
+    for (int i = 1; i <= 4; i++)
+    {
+        if (player_info.id[i] == msg_die.playerID)
+        {
+            set_dead(i);
+            break;
+        }
+    }
     Serial.printf("Received Die packet | Player ID: %u\n", msg_die.playerID);
 }
 

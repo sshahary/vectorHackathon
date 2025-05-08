@@ -26,6 +26,12 @@ enum DIR
     Left = 4
 };
 
+struct Player_info
+{
+    uint8_t id[5];
+    uint8_t alive[5];
+};
+
 struct __attribute__((packed)) MSG_Join
 {
     uint32_t HardwareID;
