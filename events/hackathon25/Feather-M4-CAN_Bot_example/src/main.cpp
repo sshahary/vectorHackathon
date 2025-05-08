@@ -6,57 +6,66 @@
 const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
 uint8_t player_ID = 0;
 uint8_t game_ID = 0;
-
+MSG_State positions;
 
 // Function prototypes
 void send_Join();
 void rcv_Player();
+void rcv_state();
 void rcv_Game();
 
 // CAN receive callback
-void onReceive(int packetSize) {
-  if (packetSize) {
-    switch(CAN.packetId()) {      
-      case Player:
-        Serial.println("CAN: Received Player packet");
-        rcv_Player();
-        break;
-      case Game:
-        Serial.println("CAN: Received Game packet");
-        rcv_Game();
-        break;
-      default:
-        Serial.println("CAN: Received unknown packet");
-        break;
+void onReceive(int packetSize)
+{
+    if (packetSize)
+    {
+        switch (CAN.packetId())
+        {
+        case Player:
+            Serial.println("CAN: Received Player packet");
+            rcv_Player();
+            break;
+        case Game:
+            Serial.println("CAN: Received Game packet");
+            rcv_Game();
+            break;
+        default:
+            Serial.println("CAN: Received unknown packet");
+            break;
+        }
     }
-  }
 }
 
 // CAN setup
-bool setupCan(long baudRate) {
+bool setupCan(long baudRate)
+{
     pinMode(PIN_CAN_STANDBY, OUTPUT);
     digitalWrite(PIN_CAN_STANDBY, false);
     pinMode(PIN_CAN_BOOSTEN, OUTPUT);
     digitalWrite(PIN_CAN_BOOSTEN, true);
 
-    if (!CAN.begin(baudRate)) {
+    if (!CAN.begin(baudRate))
+    {
         return false;
     }
     return true;
 }
 
 // Setup
-void setup() {
+void setup()
+{
     Serial.begin(115200);
-    while (!Serial);
+    while (!Serial)
+        ;
 
-    
     Serial.println("Initializing CAN bus...");
-    if (!setupCan(500000)) {
+    if (!setupCan(500000))
+    {
         Serial.println("Error: CAN initialization failed!");
-        while (1);
+        while (1)
+            ;
     }
-    Serial.println("CAN bus initialized successfully."); 
+    Serial.println("CAN bus initialized successfully.");
 
     CAN.onReceive(onReceive);
 
@@ -68,24 +77,26 @@ void setup() {
 void loop() {}
 
 // Send JOIN packet via CAN
-void send_Join(){
+void send_Join()
+{
     MSG_Join msg_join;
     msg_join.HardwareID = hardware_ID;
 
     CAN.beginPacket(Join);
-    CAN.write((uint8_t*)&msg_join, sizeof(MSG_Join));
+    CAN.write((uint8_t *)&msg_join, sizeof(MSG_Join));
     CAN.endPacket();
 
     Serial.printf("JOIN packet sent (Hardware ID: %u)\n", hardware_ID);
 }
 
-
 // Receive player information
-void rcv_Player(){
+void rcv_Player()
+{
     MSG_Player msg_player;
-    CAN.readBytes((uint8_t*)&msg_player, sizeof(MSG_Player));
+    CAN.readBytes((uint8_t *)&msg_player, sizeof(MSG_Player));
 
-    if(msg_player.HardwareID == hardware_ID){
+    if (msg_player.HardwareID == hardware_ID)
+    {
         player_ID = msg_player.PlayerID;
         Serial.printf("Player ID recieved\n");
     }
@@ -93,39 +104,77 @@ void rcv_Player(){
     //     player_ID = 0;
     // }
 
-    Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n", 
-        msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
+    Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n",
+                  msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
 }
 
-// Receive game information
+// set player name
+void send_Name()
+{
+    MSG_Name msg_name;
+    msg_name.playerID = player_ID;
+    msg_name.name[0] = 'R';
+    msg_name.name[1] = 'S';
+    msg_name.name[2] = 'A';
+    msg_name.size = 3;
 
-void send_GameAck() {
+    CAN.beginPacket(Rename);
+    CAN.write((uint8_t *)&msg_name, sizeof(MSG_Name));
+    CAN.endPacket();
+
+    Serial.printf("RENAME packet sent (Hardware ID: %u)\n", hardware_ID);
+}
+
+void send_GameAck()
+{
     MSG_GameAck ack;
     ack.player_ID = player_ID;
 
     CAN.beginPacket(GameAck);
-    CAN.write((uint8_t*)&ack, sizeof(MSG_GameAck));
+    CAN.write((uint8_t *)&ack, sizeof(MSG_GameAck));
     CAN.endPacket();
 
     Serial.printf("Sent GameAck for Player ID: %u\n", player_ID);
 }
 
-void rcv_Game() {
+// Receive game information
+void rcv_Game()
+{
     MSG_Game gameMsg;
-    CAN.readBytes((uint8_t*)&gameMsg, sizeof(MSG_Game));
+    CAN.readBytes((uint8_t *)&gameMsg, sizeof(MSG_Game));
 
-    bool isSelected = (
-        gameMsg.player1_ID == player_ID ||
-        gameMsg.player2_ID == player_ID ||
-        gameMsg.player3_ID == player_ID ||
-        gameMsg.player4_ID == player_ID
-    );
+    bool isSelected = (gameMsg.player1_ID == player_ID ||
+                       gameMsg.player2_ID == player_ID ||
+                       gameMsg.player3_ID == player_ID ||
+                       gameMsg.player4_ID == player_ID);
     Serial.printf("Game started with players: %u, %u, %u, %u\n",
-        gameMsg.player1_ID, gameMsg.player2_ID, gameMsg.player3_ID, gameMsg.player4_ID);
-    if (isSelected) {
+                  gameMsg.player1_ID, gameMsg.player2_ID, gameMsg.player3_ID, gameMsg.player4_ID);
+    if (isSelected)
+    {
         Serial.println("I am selected! Sending GameAck...");
         send_GameAck();
-    } else {
+    }
+    else
+    {
         Serial.println("I am NOT part of this game.");
     }
+}
+
+// Receive player positions
+void rcv_state()
+{
+    MSG_State msg_state;
+    CAN.readBytes((uint8_t *)&msg_state, sizeof(MSG_State));
+
+    positions.x1 = msg_state.x1;
+    positions.x2 = msg_state.x2;
+    positions.x3 = msg_state.x3;
+    positions.x4 = msg_state.x4;
+    positions.y1 = msg_state.y1;
+    positions.y2 = msg_state.y2;
+    positions.y3 = msg_state.y3;
+    positions.y4 = msg_state.y4;
+
+    // positions = msg_state;
+    Serial.printf("Received Positions\n");
 }
