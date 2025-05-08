@@ -199,6 +199,11 @@ void rcv_state()
 
 void move(DIR direction)
 {
+    if (player_ID == 0)
+    {
+        Serial.println("Player ID is not set. Cannot send Move packet.");
+        return;
+    }
     MSG_Move msg_move;
     msg_move.playerID = player_ID;
     msg_move.direction = direction;
@@ -209,6 +214,7 @@ void move(DIR direction)
 
     Serial.printf("Sent Move packet | Player ID: %u | Direction: %u\n", player_ID, direction);
 }
+
 void rcv_die(){
     MSG_Die msg_die;
     CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
