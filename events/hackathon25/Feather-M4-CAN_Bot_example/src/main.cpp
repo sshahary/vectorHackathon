@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <CAN.h>
 #include "Hackathon25.h"
+#include <queue>
 
 // Global variables
 const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
@@ -202,6 +203,160 @@ void rcv_Game()
         Serial.printf("your ID: %d\n", player_ID);
     }
 }
+
+//#######################################################################
+
+// Detect if the cell will be occupied by another player
+bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex) {
+    uint8_t px[5] = {0, positions.x1, positions.x2, positions.x3, positions.x4};
+    uint8_t py[5] = {0, positions.y1, positions.y2, positions.y3, positions.y4};
+
+    for (int i = 1; i <= 4; ++i) {
+        if (i == selfIndex || player_info.alive[i] == 0)
+            continue;
+
+        for (int d = 1; d <= 4; ++d) {
+            int nx = (px[i] + dx[d] + 64) % 64;
+            int ny = (py[i] + dy[d] + 64) % 64;
+            if (nx == x && ny == y)
+                return true;
+        }
+    }
+    return false;
+}
+
+// Basic flood fill to measure open area
+int floodFillSize(uint8_t sx, uint8_t sy) {
+    bool visited[64][64] = {false};
+    std::queue<std::pair<uint8_t, uint8_t>> q;
+    q.push({sx, sy});
+    visited[sx][sy] = true;
+    int count = 1;
+
+    while (!q.empty()) {
+        auto [x, y] = q.front(); q.pop();
+
+        for (int d = 1; d <= 4; ++d) {
+            int nx = (x + dx[d] + 64) % 64;
+            int ny = (y + dy[d] + 64) % 64;
+
+            if (!visited[nx][ny] && grid[nx][ny] == 0) {
+                visited[nx][ny] = true;
+                q.push({nx, ny});
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+// Detect whether a location leads into a trap
+bool isTrap(uint8_t x, uint8_t y, int threshold = 10) {
+    bool visited[64][64] = {false};
+    std::queue<std::pair<uint8_t, uint8_t>> q;
+    q.push({x, y});
+    visited[x][y] = true;
+    int count = 1;
+
+    while (!q.empty() && count <= threshold) {
+        auto [cx, cy] = q.front(); q.pop();
+
+        for (int d = 1; d <= 4; ++d) {
+            int nx = (cx + dx[d] + 64) % 64;
+            int ny = (cy + dy[d] + 64) % 64;
+
+            if (!visited[nx][ny] && grid[nx][ny] == 0) {
+                visited[nx][ny] = true;
+                q.push({nx, ny});
+                count++;
+            }
+        }
+    }
+
+    return count < threshold;
+}
+
+// Score a direction using lookahead, openness, flood fill, trap check
+int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
+    int nx = (px + dx[dir] + 64) % 64;
+    int ny = (py + dy[dir] + 64) % 64;
+
+    if (grid[nx][ny] != 0)
+        return -10000;
+
+    if (willBeOccupied(nx, ny, selfIndex))
+        return -5000;
+
+    int score = 0;
+
+    // Lookahead
+    int cx = px;
+    int cy = py;
+    for (int i = 1; i <= 3; ++i) {
+        cx = (cx + dx[dir] + 64) % 64;
+        cy = (cy + dy[dir] + 64) % 64;
+        if (grid[cx][cy] != 0)
+            break;
+        score += 10;
+    }
+
+    // Free neighbors around next step
+    int free_neighbors = 0;
+    for (int d = 1; d <= 4; ++d) {
+        int ax = (nx + dx[d] + 64) % 64;
+        int ay = (ny + dy[d] + 64) % 64;
+        if (grid[ax][ay] == 0)
+            free_neighbors++;
+    }
+    score += 5 * free_neighbors;
+
+    // Flood fill: how much space will I have if I go here?
+    score += floodFillSize(nx, ny);
+
+    // Trap check: does this direction lead into a dead space?
+    if (isTrap(nx, ny, 10)) {
+        score -= 3000;
+        Serial.printf("DIR %d leads to a trap!\n", dir);
+    }
+
+    return score;
+}
+
+// Main decision logic
+DIR chooseDirectin() {
+    uint8_t px = 0, py = 0;
+    switch (player_index) {
+        case 1: px = positions.x1; py = positions.y1; break;
+        case 2: px = positions.x2; py = positions.y2; break;
+        case 3: px = positions.x3; py = positions.y3; break;
+        case 4: px = positions.x4; py = positions.y4; break;
+        default: return currentDir;
+    }
+
+    // Try: current, right, left
+    DIR options[3] = {
+        currentDir,
+        static_cast<DIR>(currentDir % 4 + 1),
+        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)
+    };
+
+    int bestScore = -100000;
+    DIR bestDir = currentDir;
+
+    for (DIR dir : options) {
+        int score = scoreDirection(dir, px, py, player_index);
+        Serial.printf("Direction %d has score %d\n", dir, score);
+        if (score > bestScore) {
+            bestScore = score;
+            bestDir = dir;
+        }
+    }
+
+    return bestDir;
+}
+
+//#######################################################################
+
 // direction
 
 DIR chooseSpiralDirection() {
@@ -317,21 +472,7 @@ void rcv_state()
     if (player_info.alive[4])
         grid[positions.x4][positions.y4] = 4;
 
-    // print the grid
-    // Serial.println("Grid:");
-    // for (int i = 0; i < 64; i++)
-    // {
-    //     for (int j = 0; j < 64; j++)
-    //         Serial.printf("%d ", grid[i][j]);
-    // }
-    // Serial.println("End of grid");
-
-    // positions = msg_state;
-    // move(Right);
-    // DIR safe = chooseSafeDirection();
-    // currentDir = safe;
-    // move(safe);
-    DIR safe = chooseSpiralDirection();
+    DIR safe = chooseDirection();
     currentDir = safe;
     move(safe);
     Serial.printf("Received Positions\n");
