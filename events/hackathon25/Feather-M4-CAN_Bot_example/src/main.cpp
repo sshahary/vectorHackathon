@@ -11,6 +11,10 @@ uint8_t alive[4] = {1, 1, 1, 1};
 MSG_State positions;
 int8_t grid[64][64] = {0};
 
+const int8_t dx[] = {0,  0,  1,  0, -1};
+const int8_t dy[] = {0,  1,  0, -1,  0};
+
+DIR currentDir = Up; // Start going up
 
 // Function prototypes
 void send_Join();
@@ -193,6 +197,37 @@ void rcv_Game()
         Serial.println("I am NOT part of this game.");
     }
 }
+// direction
+
+DIR chooseSafeDirection()
+{
+    uint8_t px, py;
+    switch (player_index)
+    {
+    case 1: px = positions.x1; py = positions.y1; break;
+    case 2: px = positions.x2; py = positions.y2; break;
+    case 3: px = positions.x3; py = positions.y3; break;
+    case 4: px = positions.x4; py = positions.y4; break;
+    default: return currentDir;
+    }
+    DIR tryDirs[3] = {
+        currentDir,
+        static_cast<DIR>(currentDir % 4 + 1),
+        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)
+    };
+
+    for (DIR dir : tryDirs)
+    {
+        int nx = (px + dx[dir] + 64) % 64;
+        int ny = (py + dy[dir] + 64) % 64;
+
+        if (grid[nx][ny] == 0)
+        {
+            return dir;
+        }
+    }
+    return currentDir;
+}
 
 // Receive player positions
 void rcv_state()
@@ -225,7 +260,11 @@ void rcv_state()
     Serial.println("End of grid");
 
     // positions = msg_state;
-    move(Right);
+    // move(Right);
+    DIR safe = chooseSafeDirection();
+    currentDir = safe;
+    move(safe);
+
     Serial.printf("Received Positions\n");
 }
 
@@ -264,7 +303,7 @@ void rcv_die()
 {
     MSG_Die msg_die;
     CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
-
+  
     Serial.printf("Received Die packet | Player ID: %u\n", msg_die.playerID);
 }
 
