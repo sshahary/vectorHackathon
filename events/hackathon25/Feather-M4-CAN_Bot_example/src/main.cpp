@@ -11,6 +11,7 @@ uint8_t game_ID = 0;
 // Function prototypes
 void send_Join();
 void rcv_Player();
+void rcv_Game();
 
 // CAN receive callback
 void onReceive(int packetSize) {
@@ -19,6 +20,10 @@ void onReceive(int packetSize) {
       case Player:
         Serial.println("CAN: Received Player packet");
         rcv_Player();
+        break;
+      case Game:
+        Serial.println("CAN: Received Game packet");
+        rcv_Game();
         break;
       default:
         Serial.println("CAN: Received unknown packet");
@@ -74,6 +79,7 @@ void send_Join(){
     Serial.printf("JOIN packet sent (Hardware ID: %u)\n", hardware_ID);
 }
 
+
 // Receive player information
 void rcv_Player(){
     MSG_Player msg_player;
@@ -91,4 +97,35 @@ void rcv_Player(){
         msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
 }
 
+// Receive game information
 
+void send_GameAck() {
+    MSG_GameAck ack;
+    ack.player_ID = player_ID;
+
+    CAN.beginPacket(GameAck);
+    CAN.write((uint8_t*)&ack, sizeof(MSG_GameAck));
+    CAN.endPacket();
+
+    Serial.printf("Sent GameAck for Player ID: %u\n", player_ID);
+}
+
+void rcv_Game() {
+    MSG_Game gameMsg;
+    CAN.readBytes((uint8_t*)&gameMsg, sizeof(MSG_Game));
+
+    bool isSelected = (
+        gameMsg.player1_ID == player_ID ||
+        gameMsg.player2_ID == player_ID ||
+        gameMsg.player3_ID == player_ID ||
+        gameMsg.player4_ID == player_ID
+    );
+    Serial.printf("Game started with players: %u, %u, %u, %u\n",
+        gameMsg.player1_ID, gameMsg.player2_ID, gameMsg.player3_ID, gameMsg.player4_ID);
+    if (isSelected) {
+        Serial.println("I am selected! Sending GameAck...");
+        send_GameAck();
+    } else {
+        Serial.println("I am NOT part of this game.");
+    }
+}
