@@ -236,6 +236,11 @@ void rcv_state()
 
 void move(DIR direction)
 {
+    if (player_ID == 0)
+    {
+        Serial.println("Player ID is not set. Cannot send Move packet.");
+        return;
+    }
     MSG_Move msg_move;
     msg_move.playerID = player_ID;
     msg_move.direction = direction;
