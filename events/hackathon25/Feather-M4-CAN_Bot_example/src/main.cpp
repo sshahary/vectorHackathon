@@ -6,6 +6,8 @@
 const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
 uint8_t player_ID = 0;
 uint8_t game_ID = 0;
+uint8_t player_index = 0;
+uint8_t alive[4] = {1, 1, 1, 1};
 MSG_State positions;
 
 // Function prototypes
@@ -115,14 +117,15 @@ void rcv_Player()
     {
         player_ID = msg_player.PlayerID;
         Serial.printf("Player ID recieved\n");
+        send_Name();
     }
-    //  else {
-    //     player_ID = 0;
-    // }
+    else
+    {
+        player_ID = 0;
+    }
 
     Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n",
                   msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
-    send_Name();
 }
 
 // set player name
@@ -154,12 +157,23 @@ void send_GameAck()
     Serial.printf("Sent GameAck for Player ID: %u\n", player_ID);
 }
 
+void set_index(MSG_Game gameMsg)
+{
+    if (gameMsg.player1_ID == player_ID)
+        player_index = 1;
+    if (gameMsg.player2_ID == player_ID)
+        player_index = 2;
+    if (gameMsg.player3_ID == player_ID)
+        player_index = 3;
+    if (gameMsg.player4_ID == player_ID)
+        player_index = 4;
+}
+
 // Receive game information
 void rcv_Game()
 {
     MSG_Game gameMsg;
     CAN.readBytes((uint8_t *)&gameMsg, sizeof(MSG_Game));
-
     bool isSelected = (gameMsg.player1_ID == player_ID ||
                        gameMsg.player2_ID == player_ID ||
                        gameMsg.player3_ID == player_ID ||
@@ -169,6 +183,7 @@ void rcv_Game()
     if (isSelected)
     {
         Serial.println("I am selected! Sending GameAck...");
+        set_index(gameMsg);
         send_GameAck();
     }
     else
@@ -209,7 +224,22 @@ void move(DIR direction)
 
     Serial.printf("Sent Move packet | Player ID: %u | Direction: %u\n", player_ID, direction);
 }
-void rcv_die(){
+
+void set_dead(uint8_t index)
+{
+    for (int x = 0; x < 64; x++)
+    {
+        for (int y = 0; y < 64; y++)
+        {
+            if (grid[x][y] == index)
+                grid[x][y] = 0;
+        }
+    }
+    alive[index] = 0;
+}
+
+void rcv_die()
+{
     MSG_Die msg_die;
     CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
 
