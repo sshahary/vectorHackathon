@@ -226,12 +226,38 @@ bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex) {
 }
 
 // Basic flood fill to measure open area
-int floodFillSize(uint8_t sx, uint8_t sy) {
+// int floodFillSize(uint8_t sx, uint8_t sy) {
+//     bool visited[64][64] = {false};
+//     std::queue<std::pair<uint8_t, uint8_t>> q;
+//     q.push({sx, sy});
+//     visited[sx][sy] = true;
+//     int count = 1;
+
+//     while (!q.empty()) {
+//         auto [x, y] = q.front(); q.pop();
+
+//         for (int d = 1; d <= 4; ++d) {
+//             int nx = (x + dx[d] + 64) % 64;
+//             int ny = (y + dy[d] + 64) % 64;
+
+//             if (!visited[nx][ny] && grid[nx][ny] == 0) {
+//                 visited[nx][ny] = true;
+//                 q.push({nx, ny});
+//                 count++;
+//             }
+//         }
+//     }
+//     return count;
+// }
+
+FloodResult advancedFloodScore(uint8_t sx, uint8_t sy) {
     bool visited[64][64] = {false};
     std::queue<std::pair<uint8_t, uint8_t>> q;
     q.push({sx, sy});
     visited[sx][sy] = true;
-    int count = 1;
+
+    int size = 1;
+    int exits = 0;
 
     while (!q.empty()) {
         auto [x, y] = q.front(); q.pop();
@@ -240,15 +266,21 @@ int floodFillSize(uint8_t sx, uint8_t sy) {
             int nx = (x + dx[d] + 64) % 64;
             int ny = (y + dy[d] + 64) % 64;
 
-            if (!visited[nx][ny] && grid[nx][ny] == 0) {
-                visited[nx][ny] = true;
-                q.push({nx, ny});
-                count++;
+            if (!visited[nx][ny]) {
+                if (grid[nx][ny] == 0) {
+                    visited[nx][ny] = true;
+                    q.push({nx, ny});
+                    size++;
+                } else {
+                    exits++; // touches something that’s occupied
+                }
             }
         }
     }
-    return count;
+
+    return { size, exits };
 }
+
 
 // Detect whether a location leads into a trap
 bool isTrap(uint8_t x, uint8_t y, int threshold = 10) {
@@ -310,14 +342,25 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
     }
     score += 5 * free_neighbors;
 
-    // Flood fill: how much space will I have if I go here?
-    score += floodFillSize(nx, ny);
+    // // Flood fill: how much space will I have if I go here?
+    // score += floodFillSize(nx, ny);
 
-    // Trap check: does this direction lead into a dead space?
-    if (isTrap(nx, ny, 10)) {
-        score -= 3000;
-        Serial.printf("DIR %d leads to a trap!\n", dir);
+    // // Trap check: does this direction lead into a dead space?
+    // if (isTrap(nx, ny, 10)) {
+    //     score -= 3000;
+    //     Serial.printf("DIR %d leads to a trap!\n", dir);
+    // }
+
+    FloodResult flood = advancedFloodScore(nx, ny);
+    score += flood.size;
+    
+    // Penalize tunnels
+    if (flood.exitCount <= 1 && flood.size < 30) {
+        score -= 5000;
+        Serial.printf("DIR %d leads into closed tunnel (exits: %d, size: %d)\n", dir, flood.exitCount, flood.size);
     }
+    
+
 
     return score;
 }
