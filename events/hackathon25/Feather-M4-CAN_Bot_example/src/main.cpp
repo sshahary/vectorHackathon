@@ -17,6 +17,12 @@ const int8_t dy[] = {0, 1, 0, -1, 0};
 DIR currentDir = Right;
 bool goingRight = true;
 
+DIR spiralDirs[4] = {Right, Down, Left, Up};
+uint8_t spiralStepLength = 1;
+uint8_t spiralStepsRemaining = 1;
+uint8_t spiralTurnCounter = 0;
+uint8_t spiralDirIndex = 0;
+
 // Function prototypes
 void send_Join();
 void rcv_Player();
@@ -207,69 +213,38 @@ void rcv_Game()
 DIR chooseSpiralDirection()
 {
     uint8_t px, py;
-    switch (player_index)
-    {
-    case 1:
-        px = positions.x1;
-        py = positions.y1;
-        break;
-    case 2:
-        px = positions.x2;
-        py = positions.y2;
-        break;
-    case 3:
-        px = positions.x3;
-        py = positions.y3;
-        break;
-    case 4:
-        px = positions.x4;
-        py = positions.y4;
-        break;
-    default:
-        return currentDir;
+    switch (player_index) {
+        case 1: px = positions.x1; py = positions.y1; break;
+        case 2: px = positions.x2; py = positions.y2; break;
+        case 3: px = positions.x3; py = positions.y3; break;
+        case 4: px = positions.x4; py = positions.y4; break;
+        default: return currentDir;
     }
 
-    int fx = (px + dx[currentDir] + 64) % 64;
-    int fy = (py + dy[currentDir] + 64) % 64;
+    DIR dir = spiralDirs[spiralDirIndex];
+    int nx = (px + dx[dir] + 64) % 64;
+    int ny = (py + dy[dir] + 64) % 64;
 
-    if (grid[fx][fy] == 0)
-    {
-        return currentDir;
+    if (grid[nx][ny] == 0) {
+        spiralStepsRemaining--;
+        if (spiralStepsRemaining == 0) {
+            spiralDirIndex = (spiralDirIndex + 1) % 4;
+            spiralTurnCounter++;
+            if (spiralTurnCounter % 2 == 0)
+                spiralStepLength++;
+            spiralStepsRemaining = spiralStepLength;
+        }
+        return dir;
     }
-
-    if (currentDir == Right || currentDir == Left)
-    {
-        int dyDir = (py + 1 + 64) % 64;
-        if (grid[px][dyDir] == 0)
-        {
-            return Up;
+    for (int i = 1; i < 4; i++) {
+        DIR altDir = spiralDirs[(spiralDirIndex + i) % 4];
+        int ax = (px + dx[altDir] + 64) % 64;
+        int ay = (py + dy[altDir] + 64) % 64;
+        if (grid[ax][ay] == 0) {
+            return altDir;
         }
     }
-    if (currentDir == Down)
-    {
-        if (goingRight)
-        {
-            int rx = (px + 1 + 64) % 64;
-            if (grid[rx][py] == 0)
-            {
-                currentDir = Right;
-                goingRight = true;
-                return Right;
-            }
-        }
-        else
-        {
-            int lx = (px - 1 + 64) % 64;
-            if (grid[lx][py] == 0)
-            {
-                currentDir = Left;
-                goingRight = false;
-                return Left;
-            }
-        }
-    }
-
-    return currentDir;
+    return dir;
 }
 
 DIR chooseSafeDirection()
@@ -314,7 +289,6 @@ DIR chooseSafeDirection()
     return currentDir;
 }
 
-// Receive player positions
 void rcv_state()
 {
     MSG_State msg_state;
@@ -338,7 +312,6 @@ void rcv_state()
         grid[positions.x3][positions.y3] = 3;
     if (player_info.alive[4])
         grid[positions.x4][positions.y4] = 4;
-
     // print the grid
     // Serial.println("Grid:");
     // for (int i = 0; i < 64; i++)
