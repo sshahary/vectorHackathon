@@ -7,6 +7,8 @@ const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
 uint8_t player_ID = 0;
 uint8_t game_ID = 0;
 MSG_State positions;
+int8_t grid[64][64] = {0};
+
 
 // Function prototypes
 void send_Join();
@@ -191,6 +193,21 @@ void rcv_state()
     positions.y2 = msg_state.y2;
     positions.y3 = msg_state.y3;
     positions.y4 = msg_state.y4;
+
+    // Update grid with player positions
+    grid[positions.x1][positions.y1] = 1;
+    grid[positions.x2][positions.y2] = 2;
+    grid[positions.x3][positions.y3] = 3;
+    grid[positions.x4][positions.y4] = 4;
+
+    // print the grid
+    Serial.println("Grid:");
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+            Serial.printf("%d ", grid[i][j]);
+    }
+    Serial.println("End of grid");
 
     // positions = msg_state;
     move(Right);
