@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+
 enum CAN_MSGs
 {
     Join = 0x100,
@@ -26,7 +27,7 @@ enum DIR
     Left = 4
 };
 
-enum StrategyMode { EXPLORE, DEFEND };
+enum StrategyMode { EXPLORE, DEFEND, ATTACK };
 
 struct Player_info
 {

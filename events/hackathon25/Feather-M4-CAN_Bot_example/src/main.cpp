@@ -2,8 +2,6 @@
 #include <CAN.h>
 #include "Hackathon25.h"
 #include <queue>
-#include <cstdlib>
-#include <cmath>
 
 // Global variables
 const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
@@ -28,13 +26,36 @@ uint8_t spiralDirIndex = 0;
 
 StrategyMode mode = EXPLORE;
 
-void updateStrategyMode()
-{
+// void updateStrategyMode()
+// {
+//     int alive = 0;
+//     for (int i = 1; i <= 4; ++i)
+//         alive += player_info.alive[i];
+//     mode = (alive >= 3) ? EXPLORE : DEFEND;
+// }
+
+void updateStrategyMode() {
     int alive = 0;
     for (int i = 1; i <= 4; ++i)
         alive += player_info.alive[i];
-    mode = (alive >= 3) ? EXPLORE : DEFEND;
+
+    if (alive >= 3) {
+        mode = EXPLORE;
+    } else if (alive == 2) {
+        // Check if we are still alive and one opponent is left
+        if (player_info.alive[player_index]) {
+            mode = ATTACK;
+        } else {
+            mode = DEFEND;
+        }
+    } else {
+        mode = DEFEND;
+    }
+
+    Serial.printf("Strategy mode updated: %s\n", 
+        mode == EXPLORE ? "EXPLORE" : mode == DEFEND ? "DEFEND" : "ATTACK");
 }
+
 
 // Function prototypes
 void send_Join();
@@ -342,25 +363,131 @@ bool isTrap(uint8_t x, uint8_t y, int threshold = 10)
 }
 
 // Score a direction using lookahead, openness, flood fill, trap check
+// int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
+// {
+//     int nx = (px + dx[dir] + 64) % 64;
+//     int ny = (py + dy[dir] + 64) % 64;
+//     int score = 0;
+
+//     for (int i = 1; i <= 4; ++i)
+//     {
+//         if (i == selfIndex || !player_info.alive[i])
+//             continue;
+
+//         // int dx_enemy = std::abs(nx - px);
+//         int dx_enemy = (nx - px < 0) ? -(nx - px) : nx - px;
+//         int dy_enemy = (ny - py < 0) ? -(ny - py) : ny - py;
+//         int manhattan = dx_enemy + dy_enemy;
+
+//         if (manhattan <= 2)
+//         {
+//             score -= (3 - manhattan) * 200; // nearby players = dangerous
+//         }
+//     }
+
+//     if (grid[nx][ny] != 0)
+//         return -10000;
+
+//     if (willBeOccupied(nx, ny, selfIndex))
+//         return -5000;
+
+//     // Lookahead
+//     int cx = px;
+//     int cy = py;
+//     for (int i = 1; i <= 3; ++i)
+//     {
+//         cx = (cx + dx[dir] + 64) % 64;
+//         cy = (cy + dy[dir] + 64) % 64;
+//         if (grid[cx][cy] != 0)
+//             break;
+//         score += 10;
+//     }
+
+//     // Free neighbors around next step
+//     int free_neighbors = 0;
+//     for (int d = 1; d <= 4; ++d)
+//     {
+//         int ax = (nx + dx[d] + 64) % 64;
+//         int ay = (ny + dy[d] + 64) % 64;
+//         if (grid[ax][ay] == 0)
+//             free_neighbors++;
+//     }
+//     score += 5 * free_neighbors;
+
+//     // // Flood fill: how much space will I have if I go here?
+//     // score += floodFillSize(nx, ny);
+
+//     // // Trap check: does this direction lead into a dead space?
+//     // if (isTrap(nx, ny, 10)) {
+//     //     score -= 3000;
+//     //     Serial.printf("DIR %d leads to a trap!\n", dir);
+//     // }
+
+//     FloodResult flood = advancedFloodScore(nx, ny);
+//     // score += flood.size; // main score but for test purposes only i am putting something down below
+//     // 2-ply lookahead (simple forward simulation)
+//     int bestFutureScore = 0;
+
+//     for (int d = 1; d <= 4; ++d)
+//     {
+//         int fx = (nx + dx[d] + 64) % 64;
+//         int fy = (ny + dy[d] + 64) % 64;
+//         if (grid[fx][fy] == 0 && !willBeOccupied(fx, fy, selfIndex))
+//         {
+//             FloodResult futureFlood = advancedFloodScore(fx, fy);
+//             int fscore = futureFlood.size;
+
+//             if (futureFlood.exitCount <= 1 && futureFlood.size < 30)
+//                 fscore -= 3000;
+//             bestFutureScore = max(bestFutureScore, fscore);
+//         }
+//     }
+//     score += bestFutureScore / 2; // apply with half weight
+
+//     if (mode == EXPLORE)
+//     {
+//         score += flood.size;
+//     }
+//     else
+//     {
+//         score += 3 * free_neighbors; // prioritize safety
+//     }
+
+//     // Penalize tunnels
+//     if (flood.exitCount <= 1 && flood.size < 30)
+//     {
+//         score -= 5000;
+//         Serial.printf("DIR %d leads into closed tunnel (exits: %d, size: %d)\n", dir, flood.exitCount, flood.size);
+//     }
+
+//     return score;
+// }
+
 int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
 {
     int nx = (px + dx[dir] + 64) % 64;
     int ny = (py + dy[dir] + 64) % 64;
     int score = 0;
 
+    // Penalize proximity to other player heads (universal)
     for (int i = 1; i <= 4; ++i)
     {
-        if (i == selfIndex || !player_info.alive[i])
-            continue;
+        if (i == selfIndex || !player_info.alive[i]) continue;
 
-        // int dx_enemy = std::abs(nx - px);
-        int dx_enemy = (nx - px < 0) ? -(nx - px) : nx - px;
-        int dy_enemy = (ny - py < 0) ? -(ny - py) : ny - py;
+        uint8_t ex = 0, ey = 0;
+        switch (i) {
+            case 1: ex = positions.x1; ey = positions.y1; break;
+            case 2: ex = positions.x2; ey = positions.y2; break;
+            case 3: ex = positions.x3; ey = positions.y3; break;
+            case 4: ex = positions.x4; ey = positions.y4; break;
+        }
+
+        int dx_enemy = (nx - ex < 0) ? -(nx - ex) : nx - ex;
+        int dy_enemy = (ny - ey < 0) ? -(ny - ey) : ny - ey;
         int manhattan = dx_enemy + dy_enemy;
 
-        if (manhattan <= 2)
-        {
-            score -= (3 - manhattan) * 200; // nearby players = dangerous
+        if (manhattan <= 2) {
+            score -= (3 - manhattan) * 200; // discourage proximity
         }
     }
 
@@ -370,7 +497,7 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
     if (willBeOccupied(nx, ny, selfIndex))
         return -5000;
 
-    // Lookahead
+    // Lookahead bonus
     int cx = px;
     int cy = py;
     for (int i = 1; i <= 3; ++i)
@@ -382,7 +509,7 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
         score += 10;
     }
 
-    // Free neighbors around next step
+    // Count free neighbors
     int free_neighbors = 0;
     for (int d = 1; d <= 4; ++d)
     {
@@ -393,20 +520,11 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
     }
     score += 5 * free_neighbors;
 
-    // // Flood fill: how much space will I have if I go here?
-    // score += floodFillSize(nx, ny);
-
-    // // Trap check: does this direction lead into a dead space?
-    // if (isTrap(nx, ny, 10)) {
-    //     score -= 3000;
-    //     Serial.printf("DIR %d leads to a trap!\n", dir);
-    // }
-
+    // Flood fill evaluation
     FloodResult flood = advancedFloodScore(nx, ny);
-    // score += flood.size; // main score but for test purposes only i am putting something down below
-    // 2-ply lookahead (simple forward simulation)
-    int bestFutureScore = 0;
 
+    // 2-ply lookahead to evaluate future steps
+    int bestFutureScore = 0;
     for (int d = 1; d <= 4; ++d)
     {
         int fx = (nx + dx[d] + 64) % 64;
@@ -418,21 +536,47 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
 
             if (futureFlood.exitCount <= 1 && futureFlood.size < 30)
                 fscore -= 3000;
+
             bestFutureScore = max(bestFutureScore, fscore);
         }
     }
-    score += bestFutureScore / 2; // apply with half weight
+    score += bestFutureScore / 2;
 
+    // Strategy-specific scoring
     if (mode == EXPLORE)
     {
         score += flood.size;
     }
-    else
+    else if (mode == DEFEND)
     {
-        score += 3 * free_neighbors; // prioritize safety
+        score += 3 * free_neighbors;
+    }
+    else if (mode == ATTACK)
+    {
+        // Prefer moving toward the closest alive enemy
+        int minDist = 999;
+        for (int i = 1; i <= 4; ++i)
+        {
+            if (i == selfIndex || !player_info.alive[i]) continue;
+
+            uint8_t ex = 0, ey = 0;
+            switch (i) {
+                case 1: ex = positions.x1; ey = positions.y1; break;
+                case 2: ex = positions.x2; ey = positions.y2; break;
+                case 3: ex = positions.x3; ey = positions.y3; break;
+                case 4: ex = positions.x4; ey = positions.y4; break;
+            }
+
+            int dist = abs(nx - ex) + abs(ny - ey);
+            if (dist < minDist) minDist = dist;
+        }
+
+        score += (64 - minDist) * 3;     // chase enemy
+        score += 2 * free_neighbors;     // bonus for flexible paths
+        Serial.printf("ATTACK mode: enemy dist = %d, score = %d\n", minDist, score);
     }
 
-    // Penalize tunnels
+    // Tunnel penalty
     if (flood.exitCount <= 1 && flood.size < 30)
     {
         score -= 5000;
@@ -441,6 +585,7 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
 
     return score;
 }
+
 
 // Main decision logic
 DIR chooseDirection()
