@@ -2,6 +2,8 @@
 #include <CAN.h>
 #include "Hackathon25.h"
 #include <queue>
+#include <cstdlib>
+#include <cmath>
 
 // Global variables
 const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
@@ -26,9 +28,11 @@ uint8_t spiralDirIndex = 0;
 
 StrategyMode mode = EXPLORE;
 
-void updateStrategyMode() {
+void updateStrategyMode()
+{
     int alive = 0;
-    for (int i = 1; i <= 4; ++i) alive += player_info.alive[i];
+    for (int i = 1; i <= 4; ++i)
+        alive += player_info.alive[i];
     mode = (alive >= 3) ? EXPLORE : DEFEND;
 }
 
@@ -218,18 +222,21 @@ void rcv_Game()
     }
 }
 
-//#######################################################################
+// #######################################################################
 
 // Detect if the cell will be occupied by another player
-bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex) {
+bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex)
+{
     uint8_t px[5] = {0, positions.x1, positions.x2, positions.x3, positions.x4};
     uint8_t py[5] = {0, positions.y1, positions.y2, positions.y3, positions.y4};
 
-    for (int i = 1; i <= 4; ++i) {
+    for (int i = 1; i <= 4; ++i)
+    {
         if (i == selfIndex || player_info.alive[i] == 0)
             continue;
 
-        for (int d = 1; d <= 4; ++d) {
+        for (int d = 1; d <= 4; ++d)
+        {
             int nx = (px[i] + dx[d] + 64) % 64;
             int ny = (py[i] + dy[d] + 64) % 64;
             if (nx == x && ny == y)
@@ -264,7 +271,8 @@ bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex) {
 //     return count;
 // }
 
-FloodResult advancedFloodScore(uint8_t sx, uint8_t sy) {
+FloodResult advancedFloodScore(uint8_t sx, uint8_t sy)
+{
     bool visited[64][64] = {false};
     std::queue<std::pair<uint8_t, uint8_t>> q;
     q.push({sx, sy});
@@ -273,45 +281,56 @@ FloodResult advancedFloodScore(uint8_t sx, uint8_t sy) {
     int size = 1;
     int exits = 0;
 
-    while (!q.empty()) {
-        auto [x, y] = q.front(); q.pop();
+    while (!q.empty())
+    {
+        auto [x, y] = q.front();
+        q.pop();
 
-        for (int d = 1; d <= 4; ++d) {
+        for (int d = 1; d <= 4; ++d)
+        {
             int nx = (x + dx[d] + 64) % 64;
             int ny = (y + dy[d] + 64) % 64;
 
-            if (!visited[nx][ny]) {
-                if (grid[nx][ny] == 0) {
+            if (!visited[nx][ny])
+            {
+                if (grid[nx][ny] == 0)
+                {
                     visited[nx][ny] = true;
                     q.push({nx, ny});
                     size++;
-                } else {
+                }
+                else
+                {
                     exits++; // touches something that’s occupied
                 }
             }
         }
     }
 
-    return { size, exits };
+    return {size, exits};
 }
 
-
 // Detect whether a location leads into a trap
-bool isTrap(uint8_t x, uint8_t y, int threshold = 10) {
+bool isTrap(uint8_t x, uint8_t y, int threshold = 10)
+{
     bool visited[64][64] = {false};
     std::queue<std::pair<uint8_t, uint8_t>> q;
     q.push({x, y});
     visited[x][y] = true;
     int count = 1;
 
-    while (!q.empty() && count <= threshold) {
-        auto [cx, cy] = q.front(); q.pop();
+    while (!q.empty() && count <= threshold)
+    {
+        auto [cx, cy] = q.front();
+        q.pop();
 
-        for (int d = 1; d <= 4; ++d) {
+        for (int d = 1; d <= 4; ++d)
+        {
             int nx = (cx + dx[d] + 64) % 64;
             int ny = (cy + dy[d] + 64) % 64;
 
-            if (!visited[nx][ny] && grid[nx][ny] == 0) {
+            if (!visited[nx][ny] && grid[nx][ny] == 0)
+            {
                 visited[nx][ny] = true;
                 q.push({nx, ny});
                 count++;
@@ -323,22 +342,27 @@ bool isTrap(uint8_t x, uint8_t y, int threshold = 10) {
 }
 
 // Score a direction using lookahead, openness, flood fill, trap check
-int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
+int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
+{
     int nx = (px + dx[dir] + 64) % 64;
     int ny = (py + dy[dir] + 64) % 64;
+    int score = 0;
 
-    for (int i = 1; i <= 4; ++i) {
-        if (i == selfIndex || !player_info.alive[i]) continue;
+    for (int i = 1; i <= 4; ++i)
+    {
+        if (i == selfIndex || !player_info.alive[i])
+            continue;
 
-        int dx_enemy = abs(nx - px[i]);
-        int dy_enemy = abs(ny - py[i]);
+        // int dx_enemy = std::abs(nx - px);
+        int dx_enemy = (nx - px < 0) ? -(nx - px) : nx - px;
+        int dy_enemy = (ny - py < 0) ? -(ny - py) : ny - py;
         int manhattan = dx_enemy + dy_enemy;
 
-        if (manhattan <= 2) {
-            score -= (3 - manhattan) * 200;  // nearby players = dangerous
+        if (manhattan <= 2)
+        {
+            score -= (3 - manhattan) * 200; // nearby players = dangerous
         }
     }
-
 
     if (grid[nx][ny] != 0)
         return -10000;
@@ -346,12 +370,11 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
     if (willBeOccupied(nx, ny, selfIndex))
         return -5000;
 
-    int score = 0;
-
     // Lookahead
     int cx = px;
     int cy = py;
-    for (int i = 1; i <= 3; ++i) {
+    for (int i = 1; i <= 3; ++i)
+    {
         cx = (cx + dx[dir] + 64) % 64;
         cy = (cy + dy[dir] + 64) % 64;
         if (grid[cx][cy] != 0)
@@ -361,7 +384,8 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
 
     // Free neighbors around next step
     int free_neighbors = 0;
-    for (int d = 1; d <= 4; ++d) {
+    for (int d = 1; d <= 4; ++d)
+    {
         int ax = (nx + dx[d] + 64) % 64;
         int ay = (ny + dy[d] + 64) % 64;
         if (grid[ax][ay] == 0)
@@ -383,10 +407,12 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
     // 2-ply lookahead (simple forward simulation)
     int bestFutureScore = 0;
 
-    for (int d = 1; d <= 4; ++d) {
+    for (int d = 1; d <= 4; ++d)
+    {
         int fx = (nx + dx[d] + 64) % 64;
         int fy = (ny + dy[d] + 64) % 64;
-        if (grid[fx][fy] == 0 && !willBeOccupied(fx, fy, selfIndex)) {
+        if (grid[fx][fy] == 0 && !willBeOccupied(fx, fy, selfIndex))
+        {
             FloodResult futureFlood = advancedFloodScore(fx, fy);
             int fscore = futureFlood.size;
 
@@ -395,16 +421,20 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
             bestFutureScore = max(bestFutureScore, fscore);
         }
     }
-    score += bestFutureScore / 2;  // apply with half weight
+    score += bestFutureScore / 2; // apply with half weight
 
-    if (mode == EXPLORE) {
+    if (mode == EXPLORE)
+    {
         score += flood.size;
-    } else {
-        score += 3 * free_neighbors;  // prioritize safety
+    }
+    else
+    {
+        score += 3 * free_neighbors; // prioritize safety
     }
 
     // Penalize tunnels
-    if (flood.exitCount <= 1 && flood.size < 30) {
+    if (flood.exitCount <= 1 && flood.size < 30)
+    {
         score -= 5000;
         Serial.printf("DIR %d leads into closed tunnel (exits: %d, size: %d)\n", dir, flood.exitCount, flood.size);
     }
@@ -413,30 +443,46 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
 }
 
 // Main decision logic
-DIR chooseDirection() {
+DIR chooseDirection()
+{
     uint8_t px = 0, py = 0;
-    switch (player_index) {
-        case 1: px = positions.x1; py = positions.y1; break;
-        case 2: px = positions.x2; py = positions.y2; break;
-        case 3: px = positions.x3; py = positions.y3; break;
-        case 4: px = positions.x4; py = positions.y4; break;
-        default: return currentDir;
+    switch (player_index)
+    {
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
     }
 
     // Try: current, right, left
     DIR options[3] = {
         currentDir,
         static_cast<DIR>(currentDir % 4 + 1),
-        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)
-    };
+        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)};
 
     int bestScore = -100000;
     DIR bestDir = currentDir;
 
-    for (DIR dir : options) {
+    for (DIR dir : options)
+    {
         int score = scoreDirection(dir, px, py, player_index);
         Serial.printf("Direction %d has score %d\n", dir, score);
-        if (score > bestScore) {
+        if (score > bestScore)
+        {
             bestScore = score;
             bestDir = dir;
         }
@@ -445,28 +491,44 @@ DIR chooseDirection() {
     return bestDir;
 }
 
-//#######################################################################
+// #######################################################################
 
 // direction
 
 DIR chooseSpiralDirection()
 {
     uint8_t px, py;
-    switch (player_index) {
-        case 1: px = positions.x1; py = positions.y1; break;
-        case 2: px = positions.x2; py = positions.y2; break;
-        case 3: px = positions.x3; py = positions.y3; break;
-        case 4: px = positions.x4; py = positions.y4; break;
-        default: return currentDir;
+    switch (player_index)
+    {
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
     }
 
     DIR dir = spiralDirs[spiralDirIndex];
     int nx = (px + dx[dir] + 64) % 64;
     int ny = (py + dy[dir] + 64) % 64;
 
-    if (grid[nx][ny] == 0) {
+    if (grid[nx][ny] == 0)
+    {
         spiralStepsRemaining--;
-        if (spiralStepsRemaining == 0) {
+        if (spiralStepsRemaining == 0)
+        {
             spiralDirIndex = (spiralDirIndex + 1) % 4;
             spiralTurnCounter++;
             if (spiralTurnCounter % 2 == 0)
@@ -475,11 +537,13 @@ DIR chooseSpiralDirection()
         }
         return dir;
     }
-    for (int i = 1; i < 4; i++) {
+    for (int i = 1; i < 4; i++)
+    {
         DIR altDir = spiralDirs[(spiralDirIndex + i) % 4];
         int ax = (px + dx[altDir] + 64) % 64;
         int ay = (py + dy[altDir] + 64) % 64;
-        if (grid[ax][ay] == 0) {
+        if (grid[ax][ay] == 0)
+        {
             return altDir;
         }
     }
@@ -620,5 +684,5 @@ void rcv_Finish()
         if (scores[i] > scores[win])
             win = i;
     }
-    Serial.printf("WINNER %s %d points\n", player_info.id[win], scores[win]);
+    Serial.printf("WINNER %s\n", player_info.id[win], scores[win]);
 }
