@@ -2,6 +2,18 @@
 #include <CAN.h>
 #include "Hackathon25.h"
 #include <queue>
+#include <Adafruit_NeoPixel.h>
+
+// LED setup
+
+#define LED_PIN 6
+#define LED_WIDTH 10
+#define LED_HEIGHT 10
+#define LED_COUNT (LED_WIDTH * LED_HEIGHT)
+
+Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+
 
 // Global variables
 const uint32_t hardware_ID = (*(RoReg *)0x008061FCUL);
@@ -97,6 +109,10 @@ void setup()
 
     delay(1000);
     send_Join();
+    // LED part:
+    leds.begin();
+    leds.clear();
+    leds.show();
 }
 
 // Loop remains empty, logic is event-driven via CAN callback
@@ -114,6 +130,13 @@ void send_Join()
 
     Serial.printf("JOIN packet sent (Hardware ID: %u)\n", hardware_ID);
 }
+
+// Helper function to Convert 2D → LED Index (zigzag layout)
+int XY(uint8_t x, uint8_t y) {
+    if (y % 2 == 0) return y * LED_WIDTH + x;        // Even row: left → right
+    else            return y * LED_WIDTH + (9 - x);  // Odd row: right → left
+}
+
 
 // Receive player information
 void rcv_Player()
@@ -567,11 +590,54 @@ void rcv_die()
     Serial.printf("Received Die packet | Player ID: %u\n", msg_die.playerID);
 }
 
+// void rcv_Finish()
+// {
+//     MSG_Finish msg_finish;
+//     CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
+
+//     Serial.printf("Received Finish packet\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\n",
+//                   msg_finish.id1, msg_finish.point1, msg_finish.id2, msg_finish.point2, msg_finish.id3, msg_finish.point3, msg_finish.id4, msg_finish.point4);
+// }
+
+// Recive finish with LED part:
 void rcv_Finish()
 {
     MSG_Finish msg_finish;
     CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
 
-    Serial.printf("Received Finish packet\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\nPlayer ID: %u | Points: %u\n",
-                  msg_finish.id1, msg_finish.point1, msg_finish.id2, msg_finish.point2, msg_finish.id3, msg_finish.point3, msg_finish.id4, msg_finish.point4);
+    Serial.printf("Received Finish packet\n");
+    Serial.printf("Player ID: %u | Points: %u\n", msg_finish.id1, msg_finish.point1);
+    Serial.printf("Player ID: %u | Points: %u\n", msg_finish.id2, msg_finish.point2);
+    Serial.printf("Player ID: %u | Points: %u\n", msg_finish.id3, msg_finish.point3);
+    Serial.printf("Player ID: %u | Points: %u\n", msg_finish.id4, msg_finish.point4);
+
+    // Identify our score
+    uint8_t myPoints = 0;
+    if (msg_finish.id1 == player_ID) myPoints = msg_finish.point1;
+    else if (msg_finish.id2 == player_ID) myPoints = msg_finish.point2;
+    else if (msg_finish.id3 == player_ID) myPoints = msg_finish.point3;
+    else if (msg_finish.id4 == player_ID) myPoints = msg_finish.point4;
+
+    // Find highest score among all
+    uint8_t maxPoints = msg_finish.point1;
+    if (msg_finish.point2 > maxPoints) maxPoints = msg_finish.point2;
+    if (msg_finish.point3 > maxPoints) maxPoints = msg_finish.point3;
+    if (msg_finish.point4 > maxPoints) maxPoints = msg_finish.point4;
+
+    // Decide outcome
+    bool win = (myPoints == maxPoints);
+
+    leds.clear();
+
+    uint32_t color = win ? leds.Color(0, 255, 0) : leds.Color(255, 0, 0);  // Green win, red lose
+
+    // Fill matrix
+    for (int y = 0; y < LED_HEIGHT; ++y) {
+        for (int x = 0; x < LED_WIDTH; ++x) {
+            leds.setPixelColor(XY(x, y), color);
+        }
+    }
+    leds.show();
+
+    Serial.println(win ? "🏆 YOU WIN!" : "💀 YOU LOST!");
 }
