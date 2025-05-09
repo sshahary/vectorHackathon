@@ -113,4 +113,8 @@ struct __attribute__((packed)) MSG_State
     uint8_t y4;
 };
 
+struct FloodResult {
+    int size;
+    int exitCount;
+};
 #endif
