@@ -26,6 +26,8 @@ enum DIR
     Left = 4
 };
 
+enum StrategyMode { EXPLORE, DEFEND };
+
 struct Player_info
 {
     uint8_t id[5];
