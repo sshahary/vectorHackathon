@@ -18,12 +18,6 @@ const int8_t dy[] = {0, 1, 0, -1, 0};
 DIR currentDir = Right;
 bool goingRight = true;
 
-DIR spiralDirs[4] = {Right, Down, Left, Up};
-uint8_t spiralStepLength = 1;
-uint8_t spiralStepsRemaining = 1;
-uint8_t spiralTurnCounter = 0;
-uint8_t spiralDirIndex = 0;
-
 // Function prototypes
 void send_Join();
 void rcv_Player();
@@ -104,21 +98,11 @@ void setup()
     }
     Serial.println("CAN bus initialized successfully.");
 
+    player_info.playing = 0;
     CAN.onReceive(onReceive);
 
     delay(1000);
-    player_info.playing = 0;
     send_Join();
-}
-
-void init_g()
-{
-    currentDir = Right;
-    goingRight = true;
-    spiralStepLength = 1;
-    spiralStepsRemaining = 1;
-    spiralTurnCounter = 0;
-    spiralDirIndex = 0;
 }
 
 // Loop remains empty, logic is event-driven via CAN callback
@@ -149,6 +133,10 @@ void rcv_Player()
         Serial.printf("Player ID recieved\n");
         send_Name();
     }
+    // else
+    // {
+    //     player_ID = 0;
+    // }
 
     Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n",
                   msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
@@ -198,6 +186,19 @@ void set_players(MSG_Game gameMsg)
     }
 }
 
+void init_g()
+{
+    currentDir = Right;
+    goingRight = true;
+    for (int i = 0; i < 64; i++)
+    {
+        for (int j = 0; j < 64; j++)
+        {
+            grid[i][j] = 0;
+        }
+    }
+}
+
 // Receive game information
 void rcv_Game()
 {
@@ -213,141 +214,16 @@ void rcv_Game()
     {
         init_g();
         Serial.println("I am selected! Sending GameAck...");
-        player_info.playing = 1;
         set_players(gameMsg);
+        player_info.playing = 1;
         send_GameAck();
     }
     else
     {
         player_info.playing = 0;
         Serial.println("I am NOT part of this game.");
-        Serial.printf("[your ID: %d]\n", player_ID);
+        Serial.printf("your ID: %d\n", player_ID);
     }
-}
-
-// Receive error information
-void rcv_Error()
-{
-    MSG_Error errorMsg;
-    CAN.readBytes((uint8_t *)&errorMsg, sizeof(MSG_Error));
-
-    if (errorMsg.playerID != player_ID)
-        return;
-    switch (errorMsg.error_code)
-    {
-    case ERROR_INVALID_PLAYER_ID:
-        send_Join();
-        break;
-    case ERROR_UNALLOWED_RENAME:
-        Serial.println("PROBLEM WITH RENAME");
-        break;
-    case ERROR_YOU_ARE_NOT_PLAYING:
-        player_info.playing = 0;
-        break;
-    case WARNING_UNKNOWN_MOVE:
-        Serial.println("PROBLEM WITH MOVE -> ignored");
-        break;
-    default:
-        break;
-    }
-}
-
-void rcv_state()
-{
-    MSG_State msg_state;
-    if (!player_info.playing)
-        return;
-
-    CAN.readBytes((uint8_t *)&msg_state, sizeof(MSG_State));
-    positions.x1 = msg_state.x1;
-    positions.x2 = msg_state.x2;
-    positions.x3 = msg_state.x3;
-    positions.x4 = msg_state.x4;
-    positions.y1 = msg_state.y1;
-    positions.y2 = msg_state.y2;
-    positions.y3 = msg_state.y3;
-    positions.y4 = msg_state.y4;
-
-    // Update grid with player positions
-    if (player_info.alive[1])
-        grid[positions.x1][positions.y1] = 1;
-    if (player_info.alive[2])
-        grid[positions.x2][positions.y2] = 2;
-    if (player_info.alive[3])
-        grid[positions.x3][positions.y3] = 3;
-    if (player_info.alive[4])
-        grid[positions.x4][positions.y4] = 4;
-
-    DIR safe = chooseDirection();
-    currentDir = safe;
-    // move(safe);
-    move(safe);
-    Serial.printf("Received Positions\n");
-}
-
-void move(DIR direction)
-{
-    if (player_ID == 0)
-    {
-        Serial.println("Player ID is not set. Cannot send Move packet.");
-        return;
-    }
-    MSG_Move msg_move;
-    msg_move.playerID = player_ID;
-    msg_move.direction = direction;
-
-    CAN.beginPacket(Move);
-    CAN.write((uint8_t *)&msg_move, sizeof(MSG_Move));
-    CAN.endPacket();
-
-    Serial.printf("Sent Move packet | Player ID: %u | Direction: %u\n", player_ID, direction);
-}
-
-void set_dead(uint8_t index)
-{
-    for (int x = 0; x < 64; x++)
-    {
-        for (int y = 0; y < 64; y++)
-        {
-            if (grid[x][y] == index)
-                grid[x][y] = 0;
-        }
-    }
-    player_info.alive[index] = 0;
-}
-
-void rcv_die()
-{
-    MSG_Die msg_die;
-    if (!player_info.playing)
-        return;
-
-    CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
-    for (int i = 1; i <= 4; i++)
-    {
-        if (player_info.id[i] == msg_die.playerID)
-        {
-            set_dead(i);
-            break;
-        }
-    }
-    Serial.printf("Received Die packet | Player ID: %u\n", msg_die.playerID);
-}
-
-void rcv_Finish()
-{
-    MSG_Finish msg_finish;
-    CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
-
-    uint8_t scores[5] = {0, msg_finish.point1, msg_finish.point2, msg_finish.point3, msg_finish.point4};
-    Serial.println("Received Finish packet");
-    uint8_t win = 0;
-    for (int i = 1; i <= 4; i++)
-    {
-        if (scores[i] > scores[win])
-            win = i;
-    }
-    Serial.printf("WINNER %s %d points\n", player_info.id[win], scores[win]);
 }
 
 // #######################################################################
@@ -375,13 +251,39 @@ bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex)
 }
 
 // Basic flood fill to measure open area
-int floodFillSize(uint8_t sx, uint8_t sy)
+// int floodFillSize(uint8_t sx, uint8_t sy) {
+//     bool visited[64][64] = {false};
+//     std::queue<std::pair<uint8_t, uint8_t>> q;
+//     q.push({sx, sy});
+//     visited[sx][sy] = true;
+//     int count = 1;
+
+//     while (!q.empty()) {
+//         auto [x, y] = q.front(); q.pop();
+
+//         for (int d = 1; d <= 4; ++d) {
+//             int nx = (x + dx[d] + 64) % 64;
+//             int ny = (y + dy[d] + 64) % 64;
+
+//             if (!visited[nx][ny] && grid[nx][ny] == 0) {
+//                 visited[nx][ny] = true;
+//                 q.push({nx, ny});
+//                 count++;
+//             }
+//         }
+//     }
+//     return count;
+// }
+
+FloodResult advancedFloodScore(uint8_t sx, uint8_t sy)
 {
     bool visited[64][64] = {false};
     std::queue<std::pair<uint8_t, uint8_t>> q;
     q.push({sx, sy});
     visited[sx][sy] = true;
-    int count = 1;
+
+    int size = 1;
+    int exits = 0;
 
     while (!q.empty())
     {
@@ -393,15 +295,23 @@ int floodFillSize(uint8_t sx, uint8_t sy)
             int nx = (x + dx[d] + 64) % 64;
             int ny = (y + dy[d] + 64) % 64;
 
-            if (!visited[nx][ny] && grid[nx][ny] == 0)
+            if (!visited[nx][ny])
             {
-                visited[nx][ny] = true;
-                q.push({nx, ny});
-                count++;
+                if (grid[nx][ny] == 0)
+                {
+                    visited[nx][ny] = true;
+                    q.push({nx, ny});
+                    size++;
+                }
+                else
+                {
+                    exits++; // touches something that’s occupied
+                }
             }
         }
     }
-    return count;
+
+    return {size, exits};
 }
 
 // Detect whether a location leads into a trap
@@ -472,14 +382,23 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
     }
     score += 5 * free_neighbors;
 
-    // Flood fill: how much space will I have if I go here?
-    score += floodFillSize(nx, ny);
+    // // Flood fill: how much space will I have if I go here?
+    // score += floodFillSize(nx, ny);
 
-    // Trap check: does this direction lead into a dead space?
-    if (isTrap(nx, ny, 10))
+    // // Trap check: does this direction lead into a dead space?
+    // if (isTrap(nx, ny, 10)) {
+    //     score -= 3000;
+    //     Serial.printf("DIR %d leads to a trap!\n", dir);
+    // }
+
+    FloodResult flood = advancedFloodScore(nx, ny);
+    score += flood.size;
+
+    // Penalize tunnels
+    if (flood.exitCount <= 1 && flood.size < 30)
     {
-        score -= 3000;
-        Serial.printf("DIR %d leads to a trap!\n", dir);
+        score -= 5000;
+        Serial.printf("DIR %d leads into closed tunnel (exits: %d, size: %d)\n", dir, flood.exitCount, flood.size);
     }
 
     return score;
@@ -563,34 +482,47 @@ DIR chooseSpiralDirection()
         return currentDir;
     }
 
-    DIR dir = spiralDirs[spiralDirIndex];
-    int nx = (px + dx[dir] + 64) % 64;
-    int ny = (py + dy[dir] + 64) % 64;
+    int fx = (px + dx[currentDir] + 64) % 64;
+    int fy = (py + dy[currentDir] + 64) % 64;
 
-    if (grid[nx][ny] == 0)
+    if (grid[fx][fy] == 0)
     {
-        spiralStepsRemaining--;
-        if (spiralStepsRemaining == 0)
-        {
-            spiralDirIndex = (spiralDirIndex + 1) % 4;
-            spiralTurnCounter++;
-            if (spiralTurnCounter % 2 == 0)
-                spiralStepLength++;
-            spiralStepsRemaining = spiralStepLength;
-        }
-        return dir;
+        return currentDir;
     }
-    for (int i = 1; i < 4; i++)
+
+    if (currentDir == Right || currentDir == Left)
     {
-        DIR altDir = spiralDirs[(spiralDirIndex + i) % 4];
-        int ax = (px + dx[altDir] + 64) % 64;
-        int ay = (py + dy[altDir] + 64) % 64;
-        if (grid[ax][ay] == 0)
+        int dyDir = (py + 1 + 64) % 64;
+        if (grid[px][dyDir] == 0)
         {
-            return altDir;
+            return Down;
         }
     }
-    return dir;
+    if (currentDir == Down)
+    {
+        if (goingRight)
+        {
+            int rx = (px + 1 + 64) % 64;
+            if (grid[rx][py] == 0)
+            {
+                currentDir = Right;
+                goingRight = true;
+                return Right;
+            }
+        }
+        else
+        {
+            int lx = (px - 1 + 64) % 64;
+            if (grid[lx][py] == 0)
+            {
+                currentDir = Left;
+                goingRight = false;
+                return Left;
+            }
+        }
+    }
+
+    return currentDir;
 }
 
 DIR chooseSafeDirection()
@@ -633,4 +565,127 @@ DIR chooseSafeDirection()
         }
     }
     return currentDir;
+}
+
+void rcv_Error()
+{
+    MSG_Error errorMsg;
+    CAN.readBytes((uint8_t *)&errorMsg, sizeof(MSG_Error));
+
+    if (errorMsg.playerID != player_ID)
+        return;
+    switch (errorMsg.error_code)
+    {
+    case ERROR_INVALID_PLAYER_ID:
+        send_Join();
+        break;
+    case ERROR_UNALLOWED_RENAME:
+        Serial.println("PROBLEM WITH RENAME");
+        break;
+    case ERROR_YOU_ARE_NOT_PLAYING:
+        player_info.playing = 0;
+        break;
+    case WARNING_UNKNOWN_MOVE:
+        Serial.println("PROBLEM WITH MOVE -> ignored");
+        break;
+    default:
+        break;
+    }
+}
+
+// Receive player positions
+void rcv_state()
+{
+    MSG_State msg_state;
+    if (!player_info.playing)
+        return;
+    CAN.readBytes((uint8_t *)&msg_state, sizeof(MSG_State));
+
+    positions.x1 = msg_state.x1;
+    positions.x2 = msg_state.x2;
+    positions.x3 = msg_state.x3;
+    positions.x4 = msg_state.x4;
+    positions.y1 = msg_state.y1;
+    positions.y2 = msg_state.y2;
+    positions.y3 = msg_state.y3;
+    positions.y4 = msg_state.y4;
+
+    // Update grid with player positions
+    if (player_info.alive[1])
+        grid[positions.x1][positions.y1] = 1;
+    if (player_info.alive[2])
+        grid[positions.x2][positions.y2] = 2;
+    if (player_info.alive[3])
+        grid[positions.x3][positions.y3] = 3;
+    if (player_info.alive[4])
+        grid[positions.x4][positions.y4] = 4;
+
+    DIR safe = chooseDirection();
+    currentDir = safe;
+    move(safe);
+    Serial.printf("Received Positions\n");
+}
+
+void move(DIR direction)
+{
+    if (player_ID == 0)
+    {
+        Serial.println("Player ID is not set. Cannot send Move packet.");
+        return;
+    }
+    MSG_Move msg_move;
+    msg_move.playerID = player_ID;
+    msg_move.direction = direction;
+
+    CAN.beginPacket(Move);
+    CAN.write((uint8_t *)&msg_move, sizeof(MSG_Move));
+    CAN.endPacket();
+
+    Serial.printf("Sent Move packet | Player ID: %u | Direction: %u\n", player_ID, direction);
+}
+
+void set_dead(uint8_t index)
+{
+    for (int x = 0; x < 64; x++)
+    {
+        for (int y = 0; y < 64; y++)
+        {
+            if (grid[x][y] == index)
+                grid[x][y] = 0;
+        }
+    }
+    player_info.alive[index] = 0;
+}
+
+void rcv_die()
+{
+    MSG_Die msg_die;
+    if (!player_info.playing)
+        return;
+    CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
+    for (int i = 1; i <= 4; i++)
+    {
+        if (player_info.id[i] == msg_die.playerID)
+        {
+            set_dead(i);
+            break;
+        }
+    }
+    Serial.printf("Received Die packet | Player ID: %u\n", msg_die.playerID);
+}
+
+void rcv_Finish()
+{
+    MSG_Finish msg_finish;
+    CAN.readBytes((uint8_t *)&msg_finish, sizeof(MSG_Finish));
+
+    uint8_t scores[5] = {0, msg_finish.point1, msg_finish.point2, msg_finish.point3, msg_finish.point4};
+    Serial.println("Received Finish packet");
+    uint8_t win = 0;
+    for (int i = 1; i <= 4; i++)
+    {
+        if (scores[i] > scores[win])
+            win = i;
+    }
+    Serial.printf("WINNER %d\n", player_info.id[win], scores[win]);
 }
