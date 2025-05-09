@@ -26,10 +26,19 @@ enum DIR
     Left = 4
 };
 
+enum ERROR_CODE
+{
+    ERROR_INVALID_PLAYER_ID = 1,
+    ERROR_UNALLOWED_RENAME = 2,
+    ERROR_YOU_ARE_NOT_PLAYING = 3,
+    WARNING_UNKNOWN_MOVE = 4
+};
+
 struct Player_info
 {
     uint8_t id[5];
     uint8_t alive[5];
+    uint8_t playing;
 };
 
 struct __attribute__((packed)) MSG_Join

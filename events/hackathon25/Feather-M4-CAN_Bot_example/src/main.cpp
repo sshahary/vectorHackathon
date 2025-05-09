@@ -28,6 +28,7 @@ uint8_t spiralDirIndex = 0;
 void send_Join();
 void rcv_Player();
 void rcv_state();
+void rcv_Error();
 void rcv_Game();
 void move(DIR direction);
 void rcv_die();
@@ -60,6 +61,10 @@ void onReceive(int packetSize)
         case Finish:
             Serial.println("CAN: Received Finish packet");
             rcv_Finish();
+            break;
+        case Error:
+            Serial.println("CAN: Received Finish packet");
+            rcv_Error();
             break;
         default:
             Serial.println("CAN: Received unknown packet");
@@ -102,7 +107,18 @@ void setup()
     CAN.onReceive(onReceive);
 
     delay(1000);
+    player_info.playing = 0;
     send_Join();
+}
+
+void init_g()
+{
+    currentDir = Right;
+    goingRight = true;
+    spiralStepLength = 1;
+    spiralStepsRemaining = 1;
+    spiralTurnCounter = 0;
+    spiralDirIndex = 0;
 }
 
 // Loop remains empty, logic is event-driven via CAN callback
@@ -133,10 +149,6 @@ void rcv_Player()
         Serial.printf("Player ID recieved\n");
         send_Name();
     }
-    // else
-    // {
-    //     player_ID = 0;
-    // }
 
     Serial.printf("Received Player packet | Player ID received: %u | Own Player ID: %u | Hardware ID received: %u | Own Hardware ID: %u\n",
                   msg_player.PlayerID, player_ID, msg_player.HardwareID, hardware_ID);
@@ -199,256 +211,54 @@ void rcv_Game()
                   gameMsg.player1_ID, gameMsg.player2_ID, gameMsg.player3_ID, gameMsg.player4_ID);
     if (isSelected)
     {
+        init_g();
         Serial.println("I am selected! Sending GameAck...");
+        player_info.playing = 1;
         set_players(gameMsg);
         send_GameAck();
     }
     else
     {
+        player_info.playing = 0;
         Serial.println("I am NOT part of this game.");
-        Serial.printf("your ID: %d\n", player_ID);
+        Serial.printf("[your ID: %d]\n", player_ID);
     }
 }
 
-//#######################################################################
-
-// Detect if the cell will be occupied by another player
-bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex) {
-    uint8_t px[5] = {0, positions.x1, positions.x2, positions.x3, positions.x4};
-    uint8_t py[5] = {0, positions.y1, positions.y2, positions.y3, positions.y4};
-
-    for (int i = 1; i <= 4; ++i) {
-        if (i == selfIndex || player_info.alive[i] == 0)
-            continue;
-
-        for (int d = 1; d <= 4; ++d) {
-            int nx = (px[i] + dx[d] + 64) % 64;
-            int ny = (py[i] + dy[d] + 64) % 64;
-            if (nx == x && ny == y)
-                return true;
-        }
-    }
-    return false;
-}
-
-// Basic flood fill to measure open area
-int floodFillSize(uint8_t sx, uint8_t sy) {
-    bool visited[64][64] = {false};
-    std::queue<std::pair<uint8_t, uint8_t>> q;
-    q.push({sx, sy});
-    visited[sx][sy] = true;
-    int count = 1;
-
-    while (!q.empty()) {
-        auto [x, y] = q.front(); q.pop();
-
-        for (int d = 1; d <= 4; ++d) {
-            int nx = (x + dx[d] + 64) % 64;
-            int ny = (y + dy[d] + 64) % 64;
-
-            if (!visited[nx][ny] && grid[nx][ny] == 0) {
-                visited[nx][ny] = true;
-                q.push({nx, ny});
-                count++;
-            }
-        }
-    }
-    return count;
-}
-
-// Detect whether a location leads into a trap
-bool isTrap(uint8_t x, uint8_t y, int threshold = 10) {
-    bool visited[64][64] = {false};
-    std::queue<std::pair<uint8_t, uint8_t>> q;
-    q.push({x, y});
-    visited[x][y] = true;
-    int count = 1;
-
-    while (!q.empty() && count <= threshold) {
-        auto [cx, cy] = q.front(); q.pop();
-
-        for (int d = 1; d <= 4; ++d) {
-            int nx = (cx + dx[d] + 64) % 64;
-            int ny = (cy + dy[d] + 64) % 64;
-
-            if (!visited[nx][ny] && grid[nx][ny] == 0) {
-                visited[nx][ny] = true;
-                q.push({nx, ny});
-                count++;
-            }
-        }
-    }
-
-    return count < threshold;
-}
-
-// Score a direction using lookahead, openness, flood fill, trap check
-int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex) {
-    int nx = (px + dx[dir] + 64) % 64;
-    int ny = (py + dy[dir] + 64) % 64;
-
-    if (grid[nx][ny] != 0)
-        return -10000;
-
-    if (willBeOccupied(nx, ny, selfIndex))
-        return -5000;
-
-    int score = 0;
-
-    // Lookahead
-    int cx = px;
-    int cy = py;
-    for (int i = 1; i <= 3; ++i) {
-        cx = (cx + dx[dir] + 64) % 64;
-        cy = (cy + dy[dir] + 64) % 64;
-        if (grid[cx][cy] != 0)
-            break;
-        score += 10;
-    }
-
-    // Free neighbors around next step
-    int free_neighbors = 0;
-    for (int d = 1; d <= 4; ++d) {
-        int ax = (nx + dx[d] + 64) % 64;
-        int ay = (ny + dy[d] + 64) % 64;
-        if (grid[ax][ay] == 0)
-            free_neighbors++;
-    }
-    score += 5 * free_neighbors;
-
-    // Flood fill: how much space will I have if I go here?
-    score += floodFillSize(nx, ny);
-
-    // Trap check: does this direction lead into a dead space?
-    if (isTrap(nx, ny, 10)) {
-        score -= 3000;
-        Serial.printf("DIR %d leads to a trap!\n", dir);
-    }
-
-    return score;
-}
-
-// Main decision logic
-DIR chooseDirection() {
-    uint8_t px = 0, py = 0;
-    switch (player_index) {
-        case 1: px = positions.x1; py = positions.y1; break;
-        case 2: px = positions.x2; py = positions.y2; break;
-        case 3: px = positions.x3; py = positions.y3; break;
-        case 4: px = positions.x4; py = positions.y4; break;
-        default: return currentDir;
-    }
-
-    // Try: current, right, left
-    DIR options[3] = {
-        currentDir,
-        static_cast<DIR>(currentDir % 4 + 1),
-        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)
-    };
-
-    int bestScore = -100000;
-    DIR bestDir = currentDir;
-
-    for (DIR dir : options) {
-        int score = scoreDirection(dir, px, py, player_index);
-        Serial.printf("Direction %d has score %d\n", dir, score);
-        if (score > bestScore) {
-            bestScore = score;
-            bestDir = dir;
-        }
-    }
-
-    return bestDir;
-}
-
-//#######################################################################
-
-// direction
-
-DIR chooseSpiralDirection()
+// Receive error information
+void rcv_Error()
 {
-    uint8_t px, py;
-    switch (player_index) {
-        case 1: px = positions.x1; py = positions.y1; break;
-        case 2: px = positions.x2; py = positions.y2; break;
-        case 3: px = positions.x3; py = positions.y3; break;
-        case 4: px = positions.x4; py = positions.y4; break;
-        default: return currentDir;
-    }
+    MSG_Error errorMsg;
+    CAN.readBytes((uint8_t *)&errorMsg, sizeof(MSG_Error));
 
-    DIR dir = spiralDirs[spiralDirIndex];
-    int nx = (px + dx[dir] + 64) % 64;
-    int ny = (py + dy[dir] + 64) % 64;
-
-    if (grid[nx][ny] == 0) {
-        spiralStepsRemaining--;
-        if (spiralStepsRemaining == 0) {
-            spiralDirIndex = (spiralDirIndex + 1) % 4;
-            spiralTurnCounter++;
-            if (spiralTurnCounter % 2 == 0)
-                spiralStepLength++;
-            spiralStepsRemaining = spiralStepLength;
-        }
-        return dir;
-    }
-    for (int i = 1; i < 4; i++) {
-        DIR altDir = spiralDirs[(spiralDirIndex + i) % 4];
-        int ax = (px + dx[altDir] + 64) % 64;
-        int ay = (py + dy[altDir] + 64) % 64;
-        if (grid[ax][ay] == 0) {
-            return altDir;
-        }
-    }
-    return dir;
-}
-
-DIR chooseSafeDirection()
-{
-    uint8_t px, py;
-    switch (player_index)
+    if (errorMsg.playerID != player_ID)
+        return;
+    switch (errorMsg.error_code)
     {
-    case 1:
-        px = positions.x1;
-        py = positions.y1;
+    case ERROR_INVALID_PLAYER_ID:
+        send_Join();
         break;
-    case 2:
-        px = positions.x2;
-        py = positions.y2;
+    case ERROR_UNALLOWED_RENAME:
+        Serial.println("PROBLEM WITH RENAME");
         break;
-    case 3:
-        px = positions.x3;
-        py = positions.y3;
+    case ERROR_YOU_ARE_NOT_PLAYING:
+        player_info.playing = 0;
         break;
-    case 4:
-        px = positions.x4;
-        py = positions.y4;
+    case WARNING_UNKNOWN_MOVE:
+        Serial.println("PROBLEM WITH MOVE -> ignored");
         break;
     default:
-        return currentDir;
+        break;
     }
-    DIR tryDirs[3] = {
-        currentDir,
-        static_cast<DIR>(currentDir % 4 + 1),
-        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)};
-
-    for (DIR dir : tryDirs)
-    {
-        int nx = (px + dx[dir] + 64) % 64;
-        int ny = (py + dy[dir] + 64) % 64;
-
-        if (grid[nx][ny] == 0)
-        {
-            return dir;
-        }
-    }
-    return currentDir;
 }
 
 void rcv_state()
 {
     MSG_State msg_state;
-    CAN.readBytes((uint8_t *)&msg_state, sizeof(MSG_State));
+    if (!player_info.playing)
+        return;
 
+    CAN.readBytes((uint8_t *)&msg_state, sizeof(MSG_State));
     positions.x1 = msg_state.x1;
     positions.x2 = msg_state.x2;
     positions.x3 = msg_state.x3;
@@ -509,6 +319,9 @@ void set_dead(uint8_t index)
 void rcv_die()
 {
     MSG_Die msg_die;
+    if (!player_info.playing)
+        return;
+
     CAN.readBytes((uint8_t *)&msg_die, sizeof(MSG_Die));
     for (int i = 1; i <= 4; i++)
     {
@@ -535,4 +348,289 @@ void rcv_Finish()
             win = i;
     }
     Serial.printf("WINNER %s %d points\n", player_info.id[win], scores[win]);
+}
+
+// #######################################################################
+
+// Detect if the cell will be occupied by another player
+bool willBeOccupied(uint8_t x, uint8_t y, uint8_t selfIndex)
+{
+    uint8_t px[5] = {0, positions.x1, positions.x2, positions.x3, positions.x4};
+    uint8_t py[5] = {0, positions.y1, positions.y2, positions.y3, positions.y4};
+
+    for (int i = 1; i <= 4; ++i)
+    {
+        if (i == selfIndex || player_info.alive[i] == 0)
+            continue;
+
+        for (int d = 1; d <= 4; ++d)
+        {
+            int nx = (px[i] + dx[d] + 64) % 64;
+            int ny = (py[i] + dy[d] + 64) % 64;
+            if (nx == x && ny == y)
+                return true;
+        }
+    }
+    return false;
+}
+
+// Basic flood fill to measure open area
+int floodFillSize(uint8_t sx, uint8_t sy)
+{
+    bool visited[64][64] = {false};
+    std::queue<std::pair<uint8_t, uint8_t>> q;
+    q.push({sx, sy});
+    visited[sx][sy] = true;
+    int count = 1;
+
+    while (!q.empty())
+    {
+        auto [x, y] = q.front();
+        q.pop();
+
+        for (int d = 1; d <= 4; ++d)
+        {
+            int nx = (x + dx[d] + 64) % 64;
+            int ny = (y + dy[d] + 64) % 64;
+
+            if (!visited[nx][ny] && grid[nx][ny] == 0)
+            {
+                visited[nx][ny] = true;
+                q.push({nx, ny});
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+// Detect whether a location leads into a trap
+bool isTrap(uint8_t x, uint8_t y, int threshold = 10)
+{
+    bool visited[64][64] = {false};
+    std::queue<std::pair<uint8_t, uint8_t>> q;
+    q.push({x, y});
+    visited[x][y] = true;
+    int count = 1;
+
+    while (!q.empty() && count <= threshold)
+    {
+        auto [cx, cy] = q.front();
+        q.pop();
+
+        for (int d = 1; d <= 4; ++d)
+        {
+            int nx = (cx + dx[d] + 64) % 64;
+            int ny = (cy + dy[d] + 64) % 64;
+
+            if (!visited[nx][ny] && grid[nx][ny] == 0)
+            {
+                visited[nx][ny] = true;
+                q.push({nx, ny});
+                count++;
+            }
+        }
+    }
+
+    return count < threshold;
+}
+
+// Score a direction using lookahead, openness, flood fill, trap check
+int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
+{
+    int nx = (px + dx[dir] + 64) % 64;
+    int ny = (py + dy[dir] + 64) % 64;
+
+    if (grid[nx][ny] != 0)
+        return -10000;
+
+    if (willBeOccupied(nx, ny, selfIndex))
+        return -5000;
+
+    int score = 0;
+
+    // Lookahead
+    int cx = px;
+    int cy = py;
+    for (int i = 1; i <= 3; ++i)
+    {
+        cx = (cx + dx[dir] + 64) % 64;
+        cy = (cy + dy[dir] + 64) % 64;
+        if (grid[cx][cy] != 0)
+            break;
+        score += 10;
+    }
+
+    // Free neighbors around next step
+    int free_neighbors = 0;
+    for (int d = 1; d <= 4; ++d)
+    {
+        int ax = (nx + dx[d] + 64) % 64;
+        int ay = (ny + dy[d] + 64) % 64;
+        if (grid[ax][ay] == 0)
+            free_neighbors++;
+    }
+    score += 5 * free_neighbors;
+
+    // Flood fill: how much space will I have if I go here?
+    score += floodFillSize(nx, ny);
+
+    // Trap check: does this direction lead into a dead space?
+    if (isTrap(nx, ny, 10))
+    {
+        score -= 3000;
+        Serial.printf("DIR %d leads to a trap!\n", dir);
+    }
+
+    return score;
+}
+
+// Main decision logic
+DIR chooseDirection()
+{
+    uint8_t px = 0, py = 0;
+    switch (player_index)
+    {
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
+    }
+
+    // Try: current, right, left
+    DIR options[3] = {
+        currentDir,
+        static_cast<DIR>(currentDir % 4 + 1),
+        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)};
+
+    int bestScore = -100000;
+    DIR bestDir = currentDir;
+
+    for (DIR dir : options)
+    {
+        int score = scoreDirection(dir, px, py, player_index);
+        Serial.printf("Direction %d has score %d\n", dir, score);
+        if (score > bestScore)
+        {
+            bestScore = score;
+            bestDir = dir;
+        }
+    }
+
+    return bestDir;
+}
+
+// #######################################################################
+
+// direction
+
+DIR chooseSpiralDirection()
+{
+    uint8_t px, py;
+    switch (player_index)
+    {
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
+    }
+
+    DIR dir = spiralDirs[spiralDirIndex];
+    int nx = (px + dx[dir] + 64) % 64;
+    int ny = (py + dy[dir] + 64) % 64;
+
+    if (grid[nx][ny] == 0)
+    {
+        spiralStepsRemaining--;
+        if (spiralStepsRemaining == 0)
+        {
+            spiralDirIndex = (spiralDirIndex + 1) % 4;
+            spiralTurnCounter++;
+            if (spiralTurnCounter % 2 == 0)
+                spiralStepLength++;
+            spiralStepsRemaining = spiralStepLength;
+        }
+        return dir;
+    }
+    for (int i = 1; i < 4; i++)
+    {
+        DIR altDir = spiralDirs[(spiralDirIndex + i) % 4];
+        int ax = (px + dx[altDir] + 64) % 64;
+        int ay = (py + dy[altDir] + 64) % 64;
+        if (grid[ax][ay] == 0)
+        {
+            return altDir;
+        }
+    }
+    return dir;
+}
+
+DIR chooseSafeDirection()
+{
+    uint8_t px, py;
+    switch (player_index)
+    {
+    case 1:
+        px = positions.x1;
+        py = positions.y1;
+        break;
+    case 2:
+        px = positions.x2;
+        py = positions.y2;
+        break;
+    case 3:
+        px = positions.x3;
+        py = positions.y3;
+        break;
+    case 4:
+        px = positions.x4;
+        py = positions.y4;
+        break;
+    default:
+        return currentDir;
+    }
+    DIR tryDirs[3] = {
+        currentDir,
+        static_cast<DIR>(currentDir % 4 + 1),
+        static_cast<DIR>(currentDir == 1 ? 4 : currentDir - 1)};
+
+    for (DIR dir : tryDirs)
+    {
+        int nx = (px + dx[dir] + 64) % 64;
+        int ny = (py + dy[dir] + 64) % 64;
+
+        if (grid[nx][ny] == 0)
+        {
+            return dir;
+        }
+    }
+    return currentDir;
 }
