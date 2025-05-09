@@ -600,6 +600,43 @@ void rcv_die()
 // }
 
 // Recive finish with LED part:
+
+
+void setup() {
+#if defined(__AVR_ATtiny85__) && (F_CPU == 16000000)
+  clock_prescale_set(clock_div_1);
+#endif
+
+  pixels.begin();
+}
+
+void loop() {
+  pixels.clear();
+
+  for(int i=0; i<NUMPIXELS; i++) {
+
+    pixels.setPixelColor(i, pixels.Color(0, 150, 0));
+    pixels.show();
+    delay(DELAYVAL);
+  }
+}
+
+void drawLetter(const uint8_t letter[7], int offsetX, uint32_t color) {
+  for (int y = 0; y < 7; y++) {
+    uint8_t row = letter[y];
+    for (int x = 0; x < 5; x++) {
+      if (row & (1 << (4 - x))) {
+        int px = offsetX + x;
+        int py = y + 1; // center vertically
+        if (px >= 0 && px < 10 && py >= 0 && py < 10) {
+          leds.setPixelColor(XY(px, py), color);
+        }
+      }
+    }
+  }
+}
+
+
 void rcv_Finish()
 {
     MSG_Finish msg_finish;
@@ -628,16 +665,22 @@ void rcv_Finish()
     bool win = (myPoints == maxPoints);
 
     leds.clear();
+uint32_t color = win ? leds.Color(0, 255, 0) : leds.Color(255, 0, 0);
 
-    uint32_t color = win ? leds.Color(0, 255, 0) : leds.Color(255, 0, 0);  // Green win, red lose
+if (win) {
+    // Draw W, I, N
+    drawLetter(LETTERS[0], 0, color); // W
+    drawLetter(LETTERS[1], 5, color); // I
+    drawLetter(LETTERS[2], 7, color); // N (cutoff right a bit)
+} else {
+    drawLetter(LETTERS[3], 0, color); // L
+    drawLetter(LETTERS[4], 3, color); // O
+    drawLetter(LETTERS[5], 6, color); // S
+    drawLetter(LETTERS[6], 9, color); // E
+}
 
-    // Fill matrix
-    for (int y = 0; y < LED_HEIGHT; ++y) {
-        for (int x = 0; x < LED_WIDTH; ++x) {
-            leds.setPixelColor(XY(x, y), color);
-        }
-    }
-    leds.show();
+leds.show();
+Serial.println(win ? "🏆 YOU WIN!" : "💀 YOU LOST!");
 
     Serial.println(win ? "🏆 YOU WIN!" : "💀 YOU LOST!");
 }

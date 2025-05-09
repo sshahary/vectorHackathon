@@ -2,6 +2,15 @@
 #define HACKATHON25_H
 
 #include <stdint.h>
+#include <Adafruit_NeoPixel.h>
+#ifdef __AVR__
+  #include <avr/power.h>
+#endif
+#define PIN        6
+#define NUMPIXELS 16
+Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+#define DELAYVAL 500
+
 
 enum CAN_MSGs
 {
@@ -108,4 +117,79 @@ struct FloodResult {
     int size;
     int exitCount;
 };
+
+const uint8_t LETTERS[7][7] = {
+    // W
+    {
+      0b10001,
+      0b10001,
+      0b10101,
+      0b10101,
+      0b10101,
+      0b11011,
+      0b10001
+    },
+    // I
+    {
+      0b11111,
+      0b00100,
+      0b00100,
+      0b00100,
+      0b00100,
+      0b00100,
+      0b11111
+    },
+    // N
+    {
+      0b10001,
+      0b11001,
+      0b10101,
+      0b10011,
+      0b10001,
+      0b10001,
+      0b10001
+    },
+    // L
+    {
+      0b10000,
+      0b10000,
+      0b10000,
+      0b10000,
+      0b10000,
+      0b10000,
+      0b11111
+    },
+    // O
+    {
+      0b01110,
+      0b10001,
+      0b10001,
+      0b10001,
+      0b10001,
+      0b10001,
+      0b01110
+    },
+    // S
+    {
+      0b01111,
+      0b10000,
+      0b10000,
+      0b01110,
+      0b00001,
+      0b00001,
+      0b11110
+    },
+    // E
+    {
+      0b11111,
+      0b10000,
+      0b11110,
+      0b10000,
+      0b10000,
+      0b10000,
+      0b11111
+    }
+};
+
+
 #endif
