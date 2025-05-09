@@ -496,6 +496,7 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
 
     if (willBeOccupied(nx, ny, selfIndex))
         return -5000;
+    int score = 0;
 
     // Lookahead bonus
     int cx = px;
@@ -522,25 +523,26 @@ int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
 
     // Flood fill evaluation
     FloodResult flood = advancedFloodScore(nx, ny);
+    score += flood.size; // main score
 
     // 2-ply lookahead to evaluate future steps
-    int bestFutureScore = 0;
-    for (int d = 1; d <= 4; ++d)
-    {
-        int fx = (nx + dx[d] + 64) % 64;
-        int fy = (ny + dy[d] + 64) % 64;
-        if (grid[fx][fy] == 0 && !willBeOccupied(fx, fy, selfIndex))
-        {
-            FloodResult futureFlood = advancedFloodScore(fx, fy);
-            int fscore = futureFlood.size;
+    // int bestFutureScore = 0;
+    // for (int d = 1; d <= 4; ++d)
+    // {
+    //     int fx = (nx + dx[d] + 64) % 64;
+    //     int fy = (ny + dy[d] + 64) % 64;
+    //     if (grid[fx][fy] == 0 && !willBeOccupied(fx, fy, selfIndex))
+    //     {
+    //         FloodResult futureFlood = advancedFloodScore(fx, fy);
+    //         int fscore = futureFlood.size;
 
-            if (futureFlood.exitCount <= 1 && futureFlood.size < 30)
-                fscore -= 3000;
+    //         if (futureFlood.exitCount <= 1 && futureFlood.size < 30)
+    //             fscore -= 3000;
 
-            bestFutureScore = max(bestFutureScore, fscore);
-        }
-    }
-    score += bestFutureScore / 2;
+    //         bestFutureScore = max(bestFutureScore, fscore);
+    //     }
+    // }
+    // score += bestFutureScore / 2;
 
     // Strategy-specific scoring
     if (mode == EXPLORE)

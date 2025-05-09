@@ -114,3 +114,77 @@ struct FloodResult
 };
 
 #endif
+
+
+// int scoreDirection(DIR dir, uint8_t px, uint8_t py, uint8_t selfIndex)
+// {
+//     int nx = (px + dx[dir] + 64) % 64;
+//     int ny = (py + dy[dir] + 64) % 64;
+//     int score = 0;
+
+//     for (int i = 1; i <= 4; ++i)
+//     {
+//         if (i == selfIndex || !player_info.alive[i])
+//             continue;
+
+//         // int dx_enemy = std::abs(nx - px);
+//         int dx_enemy = (nx - px < 0) ? -(nx - px) : nx - px;
+//         int dy_enemy = (ny - py < 0) ? -(ny - py) : ny - py;
+//         int manhattan = dx_enemy + dy_enemy;
+
+//         if (manhattan <= 2)
+//         {
+//             score -= (3 - manhattan) * 200; // nearby players = dangerous
+//         }
+//     }
+
+//     if (grid[nx][ny] != 0)
+//         return -10000;
+
+//     if (willBeOccupied(nx, ny, selfIndex))
+//         return -5000;
+
+//     // Lookahead
+//     int cx = px;
+//     int cy = py;
+//     for (int i = 1; i <= 3; ++i)
+//     {
+//         cx = (cx + dx[dir] + 64) % 64;
+//         cy = (cy + dy[dir] + 64) % 64;
+//         if (grid[cx][cy] != 0)
+//             break;
+//         score += 10;
+//     }
+
+//     // Free neighbors around next step
+//     int free_neighbors = 0;
+//     for (int d = 1; d <= 4; ++d)
+//     {
+//         int ax = (nx + dx[d] + 64) % 64;
+//         int ay = (ny + dy[d] + 64) % 64;
+//         if (grid[ax][ay] == 0)
+//             free_neighbors++;
+//     }
+//     score += 5 * free_neighbors;
+
+//     // // Flood fill: how much space will I have if I go here?
+//     // score += floodFillSize(nx, ny);
+
+//     // // Trap check: does this direction lead into a dead space?
+//     // if (isTrap(nx, ny, 10)) {
+//     //     score -= 3000;
+//     //     Serial.printf("DIR %d leads to a trap!\n", dir);
+//     // }
+
+//     FloodResult flood = advancedFloodScore(nx, ny);
+//     // score += flood.size; // main score but for test purposes only i am putting something down below
+
+//     // Penalize tunnels
+//     if (flood.exitCount <= 1 && flood.size < 30)
+//     {
+//         score -= 5000;
+//         Serial.printf("DIR %d leads into closed tunnel (exits: %d, size: %d)\n", dir, flood.exitCount, flood.size);
+//     }
+
+//     return score;
+// }
