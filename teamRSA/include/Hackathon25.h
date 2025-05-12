@@ -41,6 +41,12 @@ struct Player_info
     uint8_t playing;
 };
 
+struct FloodResult
+{
+    int size;
+    int exitCount;
+};
+
 struct __attribute__((packed)) MSG_Join
 {
     uint32_t HardwareID;
@@ -113,8 +119,4 @@ struct __attribute__((packed)) MSG_State
     uint8_t y4;
 };
 
-struct FloodResult {
-    int size;
-    int exitCount;
-};
 #endif
